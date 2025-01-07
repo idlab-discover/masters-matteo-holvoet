@@ -1,0 +1,129 @@
+
+Here is a sample Kubernetes YAML manifest for deploying a WordPress website with a MySQL database:
+
+```yaml
+# Create ConfigMaps for WordPress and MySQL configurations
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: "mysql"
+  WORDPRESS_DB_NAME: "wordpress"
+  WORDPRESS_DB_USER: "wordpress"
+  WORDPRESS_DB_PASSWORD: "password"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  MYSQL_ROOT_PASSWORD: "rootpassword"
+  MYSQL_DATABASE: "wordpress"
+  MYSQL_USER: "wordpress"
+  MYSQL_PASSWORD: "password"
+
+# Create Secrets for MySQL root password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+data:
+  root-password: "cm9vdHBhc3N3b3JkCg=="  # base64 encoded password
+
+# Create PersistentVolumeClaims for MySQL data persistence
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+# Deployments for WordPress and MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: wordpress-config
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          ports:
+            - containerPort: 3306
+          envFrom:
+            - configMapRef:
+                name: mysql-config
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-persistent-storage
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+# Services for WordPress and MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+This YAML manifest will create ConfigMaps and Secrets for configurations and sensitive data, Deployments for WordPress and MySQL with appropriate container images and configurations, PersistentVolumeClaims for MySQL data persistence, and Services for enabling connectivity to the WordPress website and MySQL database.

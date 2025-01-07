@@ -1,0 +1,102 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+```
+
+Expert 1: Let's start by creating a Kubernetes Namespace specifically for our WordPress deployment to keep things organized. I have named it "wordpress-namespace". This will ensure that all the resources related to WordPress are isolated within this Namespace.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: wordpress-namespace
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+Expert 2: I see Expert 1 has created a Namespace, which is a good practice. Now, let's move on to creating a MySQL service within that Namespace. I have defined a service named "mysql-service" that will expose the MySQL container on port 3306. The selector matches the MySQL pod by the label "app: mysql".
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+          ports:
+            - containerPort: 3306
+```
+
+Expert 3: Building upon Expert 2's contribution, I've crafted a Deployment manifest for the MySQL database. This Deployment ensures that a MySQL pod with the necessary configuration is created and managed by Kubernetes. The pod has a container named "mysql" running the MySQL image with the MySQL root password set as "password".
+
+Next, we will need to create a WordPress service and deployment. Let's proceed!
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  namespace: wordpress-namespace
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+Expert 1: Expanding on the MySQL service, I've now defined a WordPress service named "wordpress-service". This service will expose the WordPress container on port 80 within the WordPress Namespace.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql-service
+            - name: WORDPRESS_DB_PASSWORD
+              value: password
+          ports:
+            - containerPort: 80
+```
+
+Expert 2: Following the service creation, I've now structured the Deployment manifest for WordPress. This ensures that a WordPress pod is up and running and known to Kubernetes. Note how I've set environment variables to connect WordPress to the MySQL database. The WordPress container uses the WordPress image, and the database host is set to "mysql-service".
+
+Excellent teamwork! We now have Kubernetes YAML manifests to deploy a WordPress website with a MySQL database backend.

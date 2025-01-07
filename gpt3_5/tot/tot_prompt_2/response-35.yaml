@@ -1,0 +1,155 @@
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wordpress-mysql-pod
+spec:
+  containers:
+    - name: wordpress
+      image: wordpress:latest
+    - name: mysql
+      image: mysql:latest
+```
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql-service
+spec:
+  selector:
+    app: wordpress-mysql-pod
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql-pod
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql-pod
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+        - name: mysql
+          image: mysql:latest
+```
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /data/mysql
+```
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-pv-storage
+      volumes:
+        - name: mysql-pv-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+```
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress-mysql-pod
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress-service
+                port:
+                  number: 80
+```

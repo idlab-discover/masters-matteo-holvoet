@@ -1,0 +1,130 @@
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+```
+
+Expert 1: "I have started by defining a Kubernetes Service to expose the MySQL database. The service is named 'mysql' and selects pods labeled with 'app: mysql'. It will listen on port 3306 for MySQL connections."
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: my-secret-pw
+```
+
+Expert 2: "Building upon the Service, I've created a Deployment for MySQL, ensuring only one replica is running. The Deployment selects pods labeled with 'app: mysql'. The MySQL container uses the 'mysql:latest' image, exposes port 3306, and sets the MYSQL_ROOT_PASSWORD environment variable to 'my-secret-pw'."
+
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+```
+
+Expert 3: "I'm working on the WordPress part. I defined a Kubernetes Service named 'wordpress' to expose the WordPress container. This service selects pods labeled with 'app: wordpress', and it listens on port 80 for HTTP traffic."
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          value: my-secret-pw
+```
+
+Expert 1: "To link WordPress to MySQL, the WordPress container's environment variables should point to the MySQL service. Additionally, setting the database name, user, and password in the WordPress container's environment variables ensures WordPress connects to the MySQL database correctly."
+
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /data/mysql
+```
+
+Expert 2: "We should also consider persistence for MySQL. Defining a PersistentVolume named 'mysql-pv' with a storage size of 1Gi, access mode of ReadWriteOnce, and storage class 'standard'. We set the volume path to '/data/mysql' on the host."
+
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
+```
+
+Expert 3: "To dynamically provision storage for MySQL, let's define a PersistentVolumeClaim named 'mysql-pvc' that requests 1Gi of storage with access mode ReadWriteOnce and storage class 'standard'. This will allow MySQL to use the PersistentVolume we defined earlier."
+
+This completes the collaborative creation of Kubernetes YAML manifests to deploy a WordPress website with a MySQL backend. Each expert contributed their thoughts, refined the solution, and acknowledged the input of their peers in real-time.

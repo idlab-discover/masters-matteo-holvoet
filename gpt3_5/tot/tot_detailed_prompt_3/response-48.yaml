@@ -1,0 +1,104 @@
+Expert 1: Kubernetes Developer
+
+Step 1: I will start by creating ConfigMaps and Secrets for the configuration and sensitive data. These will be used in the deployments for WordPress and MySQL containers.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_NAME: wordpress
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: <base64-encoded-password>
+```
+
+Expert 2: DevOps Engineer
+
+Score for Expert 1 - Step 1: 4
+The use of ConfigMaps and Secrets for configuration and sensitive data is a good practice, ensuring that sensitive information is not exposed in the manifest.
+
+Step 2: Next, I will create a Deployment for the MySQL container, configuring it with PersistentVolumeClaims for data persistence.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+Expert 3: Site Reliability Engineer
+
+Score for Expert 2 - Step 2: 5
+Utilizing a Deployment for the MySQL container with PersistentVolumeClaims for data persistence is a crucial step in ensuring data integrity and availability.
+
+Step 3: Now, I will create a Deployment for WordPress with the appropriate container images, ports, and environment variables for database configuration.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-persistent-storage
+        emptyDir: {}
+```
+
+Expert 1: Kubernetes Developer
+
+Score for Expert 3 - Step 3: 4
+Creating a Deployment for WordPress with the appropriate container images and environment variables is a good step. However, utilizing a PersistentVolumeClaim for data persistence would be a better practice for production environments.
+
+Considering the scores, the consensus solution would involve incorporating PersistentVolumeClaims for data persistence in the WordPress Deployment as well and setting up Services for both WordPress and MySQL to enable connectivity.

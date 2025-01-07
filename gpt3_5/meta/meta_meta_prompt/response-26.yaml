@@ -1,0 +1,82 @@
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-website
+spec:
+  selector:
+    app: wordpress-website
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-website
+spec:
+  replicas: 3
+  selector:
+      matchLabels:
+        app: wordpress-website
+  template:
+    metadata:
+      labels:
+        app: wordpress-website
+    spec:
+      containers:
+        - name: wordpress-website
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql-database
+            - name: WORDPRESS_DB_USER
+              value: <wordpress_db_user>
+            - name: WORDPRESS_DB_PASSWORD
+              value: <wordpress_db_password>
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-database
+spec:
+  selector:
+    app: mysql-database
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-database
+spec:
+  serviceName: "mysql-database"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql-database
+  template:
+    metadata:
+      labels:
+        app: mysql-database
+    spec:
+      containers:
+        - name: mysql-database
+          image: mysql:latest
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: <mysql_root_password>
+            - name: MYSQL_DATABASE
+              value: <mysql_database_name>
+```  

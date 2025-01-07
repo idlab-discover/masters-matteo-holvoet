@@ -1,0 +1,130 @@
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wordpress-mysql-pod
+spec:
+  containers:
+  - name: wordpress
+    image: wordpress:latest
+  - name: mysql
+    image: mysql:latest
+```
+
+Expert 1: "I believe we can start with a Pod manifest to deploy both WordPress and MySQL containers. Let's keep it simple for now by specifying the container names and their images."
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: mysql
+      port: 3306
+  - name: wordpress
+      port: 80
+```
+
+Expert 2: "We need a Service to expose these containers internally within the cluster. Let's correct the formatting and ensure the ports are correctly assigned to each container."
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+      - name: mysql
+        image: mysql:latest
+```
+
+Expert 3: "I think we should switch to a Deployment manifest instead of a Pod to ensure resiliency and easier management. Let's add the replica count and matchLabels. Also, corrected the container indentation."
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: wordpress
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+```
+
+Expert 1: "To better manage and scale the services independently, it's a good idea to create separate Services for WordPress and MySQL. Let's define a Service for each container with the appropriate port mappings."
+
+Final YAML manifest:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+      - name: mysql
+        image: mysql:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: wordpress
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+```

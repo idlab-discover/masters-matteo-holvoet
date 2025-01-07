@@ -1,0 +1,225 @@
+```yaml
+# Service Mesh - Istio
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istiocontrolplane
+  namespace: istio-system
+spec:
+  profile: default
+  components:
+    ingressGateways:
+      - enabled: true
+        name: istio-ingressgateway
+        label:
+          app: istio-ingressgateway
+
+# Helm Charts for Microservices
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: app-volume
+spec:
+  capacity:
+    storage: 1Gi
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-pvc
+spec:
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice-a
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: microservice-a
+  template:
+    metadata:
+      labels:
+        app: microservice-a
+    spec:
+      containers:
+        - name: microservice-a
+          image: myrepo/microservice-a:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: microservice-a
+spec:
+  selector:
+    app: microservice-a
+  ports:
+    - port: 80
+      targetPort: 8080
+
+# Horizontal Pod Autoscaling
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: microservice-a-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: microservice-a
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: 80
+
+# Monitoring - Prometheus & Grafana
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: microservice-a-monitor
+spec:
+  selector:
+    matchLabels:
+      app: microservice-a
+  endpoints:
+    - targetPort: web
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: microservice-a-rules
+spec:
+  groups:
+    - name: microservice-a.rules
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            job: microservice-a
+          for: 1m
+          annotations:
+            summary: "High error rate on instance {{ $labels.instance }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+spec:
+  selector:
+    app: grafana
+  ports:
+    - protocol: TCP
+      port: 3000
+---  
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: microservice-a-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: microservice-a
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: monitoring
+    ports:
+      - protocol: TCP
+        port: 80
+
+# CI/CD - Jenkins
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  labels:
+    app: jenkins
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      containers:
+        - name: jenkins
+          image: jenkins/jenkins:lts
+          ports:
+            - containerPort: 8080
+            - containerPort: 50000
+
+# Canary Deployments
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: microservice-a-rollout
+spec:
+  replicas: 5
+  template:
+    metadata:
+      labels:
+        app: microservice-a
+    spec:
+      containers:
+        - name: microservice-a
+          image: myrepo/microservice-a:new-feature
+          ports:
+            - containerPort: 8080
+  strategy:
+    canary:
+      steps:
+        - setWeight: 10
+          pause: {}
+        - setWeight: 25
+          pause:
+            duration: 30s
+
+# Networking - Service Mesh Routing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: microservice-a-vs
+spec:
+  hosts:
+    - microservice-a
+  http:
+    - route:
+        - destination:
+            host: microservice-a
+            subset: v1
+          weight: 100
+
+# Chaos Engineering
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: microservice-a-chaos
+spec:
+  appinfo:
+    appns: default
+    applabel: app=microservice-a
+    annotationCheck: 'enabled'
+    chaosServiceAccount: litmus
+```

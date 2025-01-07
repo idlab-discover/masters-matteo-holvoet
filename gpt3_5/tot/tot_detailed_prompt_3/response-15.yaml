@@ -1,0 +1,155 @@
+Expert 1:
+
+Step 1: Create a Deployment for WordPress
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: password
+```
+
+Step 2: Create a Deployment and PersistentVolumeClaim for MySQL
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: root_password
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Step 3: Create Services for WordPress and MySQL
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+Step 4: Create ConfigMaps and Secrets
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque
+data:
+  username: "bXlzcWw="
+  password: "bXlzZWNyZXRzd2Q="
+  root_password: "bXlzc2VjcmV0c3dk"
+```
+
+Expert 2:
+
+Step 1: Reviewing the Deployment for WordPress
+Score: 4
+The deployment for WordPress includes the necessary environment variables for database configuration, linking it to the MySQL service via the service name.
+
+Step 2: Reviewing the Deployment and PersistentVolumeClaim for MySQL
+Score: 4
+The MySQL deployment includes the required MySQL root password and mounts a PersistentVolumeClaim for data persistence.
+
+Step 3: Reviewing the Services for both WordPress and MySQL
+Score: 3
+Creation of services without specifying ClusterIP or any additional configurations. Basic service setup.
+
+Step 4: Reviewing the ConfigMaps and Secrets
+Score: 4
+Creation of a secret resource for sensitive data like passwords with base64 encoding. Good practice.
+
+Expert 3:
+
+Step 1: Reviewing the Deployment for WordPress
+Score: 5
+The WordPress deployment seems correctly configured with the environment variables pointing to the MySQL service and using the appropriate container image.
+
+Step 2: Reviewing the Deployment and PersistentVolumeClaim for MySQL
+Score: 4
+The MySQL deployment is well defined, including the necessary environment variables and configuring a PersistentVolumeClaim for data persistence.
+
+Step 3: Reviewing the Services for both WordPress and MySQL
+Score: 3
+Creation of basic services for WordPress and MySQL. More details like specifying ClusterIP could be added for security.
+
+Step 4: Reviewing the ConfigMaps and Secrets
+Score: 5
+The usage of ConfigMaps and Secrets for sensitive data like passwords is a secure and recommended practice.
+
+After analyzing all three experts' responses and scores, it seems like Expert 1 and Expert 3 have provided accurate and comprehensive solutions for deploying WordPress with a MySQL backend on Kubernetes. Expert 2 was also close but had minor areas of improvement in the Services section. Therefore, a consensus solution would be to follow the combined solution from Expert 1 and Expert 3.

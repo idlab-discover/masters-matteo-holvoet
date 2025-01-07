@@ -1,0 +1,104 @@
+Expert 1:
+
+Step 1: Create a Deployment for WordPress
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+```
+
+Step 2: Create a Deployment for MySQL
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root_password
+        ports:
+        - containerPort: 3306
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+Step 3: Create Services for WordPress and MySQL
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+Step 4: Using ConfigMaps and Secrets for configuration and sensitive data is not shown in this example.
+
+Expert 2:
+
+Step 1 score: 4
+Step 2 score: 3
+Step 3 score: 4
+
+Expert 3:
+
+Step 1 score: 4
+Step 2 score: 4
+Step 3 score: 4
+
+Consensus: The YAML manifests provided by Expert 1 are mostly correct and fulfill the requirements mentioned. However, it lacks the usage of ConfigMaps and Secrets for configuration and sensitive data. It is recommended to enhance the manifests by incorporating ConfigMaps and Secrets as required.

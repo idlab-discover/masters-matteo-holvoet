@@ -1,0 +1,212 @@
+### Expert 1: DevOps Engineer
+Step 1: Create a PersistentVolume for MySQL data storage.
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/mysql
+```
+
+Step 2: Create a PersistentVolumeClaim for MySQL to use the PersistentVolume.
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+Step 3: Create a MySQL Deployment with the PersistentVolumeClaim.
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-persistent-storage
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+```
+
+Step 4: Create a MySQL Service.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+```
+Score:  
+Step 1: 5  
+Step 2: 4  
+Step 3: 5  
+Step 4: 5
+
+### Expert 2: Kubernetes Administrator
+Step 1: Create a ConfigMap for MySQL configuration.
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  mysql.cnf: |
+    [mysqld]
+    server-id=1
+    log_bin=/var/log/mysql/mysql-bin.log
+```
+
+Step 2: Create a Secret for MySQL root password.
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: base64_encoded_password
+```
+
+Step 3: Create a WordPress Deployment with appropriate image, ports, and environment variables.
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wp-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql-service
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: user
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 80
+```
+
+Step 4: Create a WordPress Service.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wp-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+Score:  
+Step 1: 4  
+Step 2: 5  
+Step 3: 5  
+Step 4: 5
+
+### Expert 3: Cloud Architect
+Step 1: Create a ConfigMap for WordPress configuration.
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp-config
+data:
+  wp-config.php: |
+    define( 'DB_NAME', 'wordpress' );
+    define( 'DB_USER', 'wordpress' );
+    define( 'DB_PASSWORD', 'wordpress' );
+    define( 'DB_HOST', 'mysql-service' );
+```
+
+Step 2: Create a Secret for WordPress authentication keys and salts.
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wp-secret
+type: Opaque
+data:
+  auth_key: base64_encoded_key
+  secure_auth_key: base64_encoded_key
+  logged_in_key: base64_encoded_key
+  nonce_key: base64_encoded_key
+  auth_salt: base64_encoded_key
+  secure_auth_salt: base64_encoded_key
+  logged_in_salt: base64_encoded_key
+  nonce_salt: base64_encoded_key
+```
+
+Step 3: Create ConfigMaps and Secrets for all sensitive data and configuration.
+```yaml
+# ConfigMaps and Secrets were created in previous steps, combining them here for clarity.
+```
+
+Step 4: Verify the connectivity by testing the WordPress website and MySQL database connection.
+Score:  
+Step 1: 4  
+Step 2: 4  
+Step 3: 5  
+Step 4: 3

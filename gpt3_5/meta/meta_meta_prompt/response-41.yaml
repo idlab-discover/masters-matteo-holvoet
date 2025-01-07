@@ -1,0 +1,146 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: my-web-app
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: my-web-app
+    tier: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-web-app
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: my-web-app
+        tier: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: my-web-app/frontend:latest
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  selector:
+    app: my-web-app
+    tier: backend
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-web-app
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: my-web-app
+        tier: backend
+    spec:
+      containers:
+        - name: backend
+          image: my-web-app/backend:latest
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-service
+spec:
+  selector:
+    app: my-web-app
+    tier: database
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database-statefulset
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-web-app
+      tier: database
+  serviceName: "database-service"
+  template:
+    metadata:
+      labels:
+        app: my-web-app
+        tier: database
+    spec:
+      containers:
+        - name: database
+          image: my-web-app/database:latest
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+          env:
+            - name: POSTGRES_DB
+              value: my_database
+            - name: POSTGRES_USER
+              value: admin
+            - name: POSTGRES_PASSWORD
+              value: password123
+```

@@ -1,0 +1,123 @@
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wordpress-mysql
+spec:
+  containers:
+    - name: mysql
+      image: mysql:latest
+      env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password123
+        - name: MYSQL_DATABASE
+          value: wordpress
+    - name: wordpress
+      image: wordpress:latest
+      env:
+        - name: WORDPRESS_DB_HOST
+          value: localhost
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: password123
+```
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: mysql
+      protocol: TCP
+      port: 3306
+      targetPort: 3306
+    - name: wordpress
+      protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password123
+            - name: MYSQL_DATABASE
+              value: wordpress
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_PASSWORD
+              value: password123
+```
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: mysql
+      protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - name: wordpress
+      protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+```yaml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+    - host: wordpress.example.com
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: wordpress-service
+              servicePort: 80
+```

@@ -1,0 +1,232 @@
+```yaml
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+        ports:
+        - containerPort: 80
+---
+# MySQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+        ports:
+        - containerPort: 3306
+---
+# Horizontal Pod Autoscaler for WordPress
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 50
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+---
+# Prometheus Deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus
+        ports:
+        - containerPort: 9090
+---
+# Grafana Deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana
+        ports:
+        - containerPort: 3000
+```
+```yaml
+# Backup and Restore Mechanism for WordPress and MySQL
+# Custom Resource Definition for Backup
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backups.stable.example.com
+spec:
+  group: stable.example.com
+  names:
+    kind: Backup
+    plural: backups
+    singular: backup
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+---
+# Custom Resource Definition for Restore
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: restores.stable.example.com
+spec:
+  group: stable.example.com
+  names:
+    kind: Restore
+    plural: restores
+    singular: restore
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+---
+# Kubernetes CI/CD Pipeline Configuration
+# BuildConfig for CI/CD
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: myapp-build
+spec:
+  source:
+    git:
+      uri: <repository_url>
+  strategy:
+    type: JenkinsPipeline
+    jenkinsPipelineStrategy:
+      jenkinsfile: |-
+        pipeline {
+          agent any
+          stages {
+            stage('Build') {
+              steps {
+                sh 'make'
+              }
+            }
+            stage('Deploy') {
+              steps {
+                sh 'make deploy'
+              }
+            }
+          }
+        }
+---
+# Disaster Recovery Plan
+# Implement Backup Process for WordPress
+# Implement Restore Process for WordPress
+# Implement Backup Process for MySQL
+# Implement Restore Process for MySQL
+# Evaluate RTO and RPO Metrics for Backup and Restore Processes
+---
+# Service Mesh Integration with Istio
+# Istio Configuration for Advanced Traffic Management and Security
+# Additional Resource Configuration for Istio
+```

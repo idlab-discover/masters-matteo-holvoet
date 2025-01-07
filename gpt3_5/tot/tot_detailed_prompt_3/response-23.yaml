@@ -1,0 +1,136 @@
+Expert 1:
+
+Step 1:
+- Create a Deployment manifest for WordPress container named "wordpress" with the appropriate container image, ports, and environment variables for the database configuration.
+Thinking: WordPress needs to connect to the MySQL database, so I will define the necessary environment variables to set the database host, password, and user.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-service
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: user
+```
+
+Step 2:
+- Rate the response between 1 and 5.
+- My rating: 4
+
+Step 3: Share the deployment manifest with the group.
+
+Expert 2:
+
+Step 1:
+- Create a Deployment manifest for MySQL container named "mysql" configured with PersistentVolumeClaims for data persistence.
+Thinking: MySQL needs persistent storage for data persistence. I will define PersistentVolume and PersistentVolumeClaim in the Deployment manifest.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Step 2:
+- Rate the response between 1 and 5.
+- My rating: 5
+
+Step 3: Share the deployment manifest with the group.
+
+Expert 3:
+
+Step 1:
+- Create Service manifests for both WordPress and MySQL to enable connectivity.
+Thinking: Services are needed to expose the WordPress and MySQL Deployments within the cluster. I will define ClusterIP type Services for both WordPress and MySQL.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```
+
+Step 2:
+- Rate the response between 1 and 5.
+- My rating: 4
+
+Step 3: Share the service manifests with the group.

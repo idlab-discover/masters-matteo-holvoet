@@ -1,0 +1,72 @@
+**Expert 1**: First, we should create a Secret for storing the MySQL database password. Let's call it "mysql-secret".
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: base64_encoded_password_here
+```
+
+**Expert 2**: Next, we should create a ConfigMap to store the MySQL database configuration. Let's call it "mysql-config".
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  database_name: wordpress
+  database_user: wp_user
+```
+
+**Expert 3**: Now, let's create the Deployment manifest for the MySQL database container. We'll name the container "mysql", use the MySQL image, and include the PersistentVolumeClaim for data persistence.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        envFrom:
+        - configMapRef:
+            name: mysql-config
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 3306
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+```

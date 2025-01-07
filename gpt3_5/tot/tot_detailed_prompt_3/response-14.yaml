@@ -1,0 +1,124 @@
+Expert 1: Kubernetes Architect
+
+Step 1 - Define the WordPress Deployment:
+- Create a Deployment object named "wordpress" with the appropriate container image "wordpress" and define container ports.
+- Add environment variables to configure the connection with the MySQL database.
+- Use ConfigMaps for WordPress configuration.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+---
+```
+
+Step 2 - Define the MySQL Deployment:
+- Create a Deployment object named "mysql" with the appropriate container image "mysql" and define PersistentVolumeClaims for data persistence.
+- Define environment variables using Secrets for sensitive data.
+- Use a ConfigMap for MySQL configuration.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+```
+
+Step 3 - Define Services for WordPress and MySQL:
+- Create Service objects for both WordPress and MySQL to enable connectivity.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+---
+```
+
+Step 4 - Use ConfigMaps and Secrets:
+- Make sure to have ConfigMaps for configuration data and Secrets for sensitive data.
+- Expose sensitive data such as database passwords through Secrets.
+
+Feedback:
+- Step 1: 5
+- Step 2: 4
+- Step 3: 4
+
+I will now share my response with the group.

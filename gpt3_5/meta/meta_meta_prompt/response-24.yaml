@@ -1,0 +1,82 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+          - name: mysql-persistent-storage
+            mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+In this manifest:
+- The WordPress frontend is deployed as a Deployment with 3 replicas and exposed using a Service.
+- The MySQL backend is also deployed as a Deployment with 3 replicas, a MySQL root password is set, and persistent storage is provided through a PersistentVolumeClaim with 1Gi storage.
+- High availability is achieved through having multiple replicas for both WordPress and MySQL, allowing for fault tolerance.
+- Security considerations are addressed by setting a MySQL root password and ensuring controlled access to the database.
+- Resource optimization can be further improved by fine-tuning resource requests/limits, using Horizontal Pod Autoscaler for auto-scaling, and implementing readiness and liveness probes for health checks.
+- Container orchestration, networking, and monitoring aspects can be added by using tools like Kubernetes Ingress for routing, Network Policies for network security, and Prometheus/Grafana for monitoring.

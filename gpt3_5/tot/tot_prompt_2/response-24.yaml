@@ -1,0 +1,119 @@
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql
+spec:
+  containers:
+  - name: mysql
+    image: mysql
+    env:
+      - name: MYSQL_ROOT_PASSWORD
+        value: password
+---
+```
+
+Expert 1: "I've started by creating a Pod manifest for the MySQL database named 'mysql'. I've added a container with the MySQL image and set the MySQL root password as an environment variable."
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+---
+```
+
+Expert 2: "I see the MySQL Pod is missing a network Service for external access. Let's create a Service named 'mysql' to route traffic to the MySQL Pod."
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: password
+---
+```
+
+Expert 3: "I've transformed the MySQL Pod to a Deployment for better scalability. The template now includes a selector, ensuring multiple replicas can be managed. Let's move on to integrating WordPress."
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_USER: root
+  WORDPRESS_DB_PASSWORD: password
+---
+```
+
+Expert 1: "Let's create a ConfigMap named 'wordpress-config' to store WordPress configuration, including MySQL connection details."
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: NodePort
+---
+```
+
+Expert 2: "Now let's create a Service named 'wordpress' for external access to the WordPress Pod. I've set the port 80 and defined it as NodePort for easy access."
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress
+        envFrom:
+          - configMapRef:
+              name: wordpress-config
+---
+```
+
+Expert 3: "I've created a WordPress Deployment, integrating the ConfigMap 'wordpress-config' for WordPress configuration. This setup ensures WordPress can communicate with the MySQL database securely."
+
+This sequence of YAML manifests deploys a WordPress website using a MySQL database as the backend. Each expert contributed valuable insights, leading to a comprehensive and functional Kubernetes setup.

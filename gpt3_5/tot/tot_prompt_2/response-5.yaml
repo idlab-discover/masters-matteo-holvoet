@@ -1,0 +1,136 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql-deployment
+```
+
+Expert 1: Let's start by creating a Namespace to isolate our WordPress and MySQL deployment for organizational and security purposes. This will help us keep the resources related to our application separate from others in the cluster.
+
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-mysql-deployment
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Expert 2: To ensure data persistence for the MySQL database, let's create a PersistentVolumeClaim (PVC) that MySQL can use to store its data. This PVC will request 1Gi of storage to hold MySQL's data and will be specific to our WordPress and MySQL deployment namespace.
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "your_password_here"
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-persistent-storage
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+```
+
+Expert 3: Great start on the PVC! Let's move on to creating the MySQL Deployment. In this Deployment manifest, we define a single replica of the MySQL pod, set environment variables including the MySQL root password, expose port 3306 for MySQL connections, and mount the persistent storage from the PVC we created earlier to store database data.
+
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: wordpress-mysql-deployment
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+```
+
+Expert 1: To allow the WordPress container to communicate with the MySQL backend, we need to create a Service for MySQL. This Service will expose port 3306 internally within the cluster, allowing other pods to access the MySQL database.
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  namespace: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql-service
+            - name: WORDPRESS_DB_USER
+              value: root
+            - name: WORDPRESS_DB_PASSWORD
+              value: your_password_here
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+          ports:
+            - containerPort: 80
+```
+
+Expert 2: Now let's define the WordPress Deployment. We set up one replica of the WordPress pod, configure environment variables to connect to the MySQL backend using the MySQL service DNS name, set credentials, and specify the database name. We expose port 80 for accessing the WordPress website.
+
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  namespace: wordpress-mysql-deployment
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: NodePort
+```
+
+Expert 3: To allow external access to our WordPress website, we need to create a Service for WordPress. This Service will expose port 80 externally using NodePort, making the WordPress site accessible from outside the cluster.
+
+This comprehensive manifest setup deploys a WordPress website backed by a MySQL database in a Kubernetes cluster, ensuring data persistence, connectivity between the WordPress and MySQL containers, and external access to the WordPress site.

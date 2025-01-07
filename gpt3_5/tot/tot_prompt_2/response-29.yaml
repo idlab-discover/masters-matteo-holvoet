@@ -1,0 +1,102 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+```
+
+Expert 1: We'll start by creating a new Kubernetes Namespace called "wordpress-namespace" to isolate our WordPress deployment and MySQL database. This will help keep our resources organized and separated from other workloads.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: wordpress-namespace
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+```
+
+Expert 2: Let's define a Kubernetes Service for the MySQL database within the "wordpress-namespace". By specifying the selector as "app: mysql", this service will route traffic to any pod with the label "app: mysql". The port 3306 is commonly used for MySQL communication.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+```
+
+Expert 3: To deploy the MySQL database, we'll create a Deployment named "mysql-deployment" within the "wordpress-namespace". This Deployment ensures that there is always one instance of the MySQL pod running. We specify the MySQL image and set the root password using an environment variable for security.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  namespace: wordpress-namespace
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - port: 80
+```
+
+Expert 1: Now let's create a Service for the WordPress application in the same "wordpress-namespace". This Service will route traffic to pods labeled with "app: wordpress" on port 80 for web traffic.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql-service
+            - name: WORDPRESS_DB_USER
+              value: root
+            - name: WORDPRESS_DB_PASSWORD
+              value: password
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+```
+
+Expert 2: Finally, we create a Deployment called "wordpress-deployment" for the WordPress application within the "wordpress-namespace". This Deployment will run a single instance of the WordPress pod using the WordPress image. We also set environment variables to configure the connection to the MySQL database, including the host, user, password, and database name.
+
+This completes our collaborative effort to deploy a WordPress website using a MySQL database as the backend in Kubernetes. Feel free to ask if you have any more questions or need further clarification!

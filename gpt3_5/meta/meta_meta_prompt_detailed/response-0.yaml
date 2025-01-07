@@ -1,0 +1,140 @@
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: wordpress-site.config.example.com
+spec:
+  group: config.example.com
+  names:
+    kind: WordpressSite
+    listKind: WordpressSiteList
+    plural: wordpresssites
+    singular: wordpresssite
+  scope: Namespaced
+  version: v1
+
+---
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mysql-db.config.example.com
+spec:
+  group: config.example.com
+  names:
+    kind: MysqlDB
+    listKind: MysqlDBList
+    plural: mysqldbs
+    singular: mysqldb
+  scope: Namespaced
+  version: v1
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: mysql-destination-rule
+spec:
+  host: mysql
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: wordpress-mysql-pod-security-policy
+spec:
+  privileged: false
+  # Add more security configurations as needed
+
+---
+
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: 80
+
+---
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: wordpress-pdb
+spec:
+  minAvailable: 80%
+  selector:
+    matchLabels:
+      app: wordpress
+
+---
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordpress-monitor
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  endpoints:
+    - targetPort: metrics
+      path: /metrics
+
+---
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: wordpress-prometheus-rule
+spec:
+  groups:
+    - name: wordpress
+      rules:
+        - alert: HighErrorRate
+          expr: |-
+            sum(rate(http_errors_total[5m])) by (job) / sum(rate(http_requests_total[5m])) by (job) > 0.01
+          for: 10m
+          labels:
+            severity: critical
+
+---
+
+apiVersion: monitoring.coreos.com/v1
+kind: GrafanaDashboard
+metadata:
+  name: wordpress-grafana-dashboard
+spec:
+  json: <json_dashboard_here>
+
+---
+
+apiVersion: helm.fluxcd.io/v1
+kind: HelmRelease
+metadata:
+  name: wordpress-release
+spec:
+  chart:
+    repository: https://example.com/charts
+    name: wordpress
+    version: 1.2.3
+  releaseName: my-wordpress-release
+  namespace: default
+  values:
+    # Add values for customization
+```

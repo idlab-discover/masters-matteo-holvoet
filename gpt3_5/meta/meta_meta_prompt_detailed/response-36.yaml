@@ -1,0 +1,107 @@
+```yaml
+# Network Policy to restrict traffic between WordPress and MySQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-traffic
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: mysql
+  policyTypes:
+    - Ingress
+
+# Helm chart for managing Kubernetes resources
+# Chart values are defined separately
+
+# StatefulSet for managing the MySQL database
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: your-secret-root-password
+  volumeClaimTemplates:
+    - metadata:
+        name: mysql-pv
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+
+# Horizontal Pod Autoscaler based on CPU utilization
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: 50
+
+# Ingress controller for external access to WordPress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+    - host: wordpress.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress
+                port:
+                  number: 80
+
+# Pod Disruption Budget for high availability
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: wordpress-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: wordpress
+
+# Monitoring with Prometheus and Grafana
+# Configuration for Prometheus and Grafana are defined separately
+
+# Security best practices with Role-Based Access Control (RBAC) and Pod Security Policies
+# RBAC resources and Pod Security Policies configurations are defined separately
+```

@@ -1,0 +1,122 @@
+```yaml
+# StatefulSet for MySQL
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  replicas: 3
+  serviceName: mysql
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: YOUR_ROOT_PASSWORD
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+
+# HorizontalPodAutoscaler for WordPress
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+---
+
+# Network Policy for secure communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+
+---
+
+# Ingress Controller to expose services securely
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+  - host: YOUR_DOMAIN
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress
+            port:
+              number: 80
+
+---
+
+# Prometheus and Grafana for monitoring and logging
+# Deployment manifests for Prometheus and Grafana resources
+
+---
+
+# Helm chart and Operators for lifecycle management
+# Helm chart manifest and Operator deployment manifest
+
+---
+
+# Data backup and disaster recovery mechanisms
+# Custom backup and recovery scripts using Jobs or CronJobs
+
+---
+
+# Security practices with Pod Security Policies and Security Contexts
+# Pod Security Policy manifest and Security Context in Pod manifest
+
+---
+
+# GitOps principles for declarative and automated Kubernetes management
+# Utilize GitOps tools such as Argo CD for managing Kubernetes configurations
+```

@@ -1,0 +1,123 @@
+Expert 1 - Deployment and Service Creation Specialist:
+
+Step 1: Create a Deployment for WordPress:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: mysql-password
+        ports:
+        - containerPort: 80
+```
+
+Step 2: Create a Service for WordPress:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: NodePort
+```
+
+Step 3: Create a Deployment for MySQL:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        ports:
+        - containerPort: 3306
+```
+
+Step 4: Create a Service for MySQL:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+```
+
+Step 5: Define the ConfigMaps and Secrets accordingly.
+
+Expert 2 - Configuration and Security Expert:
+
+Step 1 Score: 4
+The Deployment for WordPress looks correct, properly setting environment variables for the database configuration.
+
+Step 2 Score: 4
+The Service for WordPress is configured correctly, exposing port 80 for the WordPress container.
+
+Step 3 Score: 3
+The Deployment for MySQL is missing PersistentVolumeClaims for data persistence.
+
+Step 4 Score: 3
+The Service for MySQL is correctly selecting the MySQL pods but should also specify the targetPort.
+
+Expert 3 - Kubernetes Specialist:
+
+Step 1 Score: 4
+The Deployment for WordPress seems accurate, matching labels and setting the appropriate environment variables.
+
+Step 2 Score: 4
+Service for WordPress is configured to expose the WordPress container correctly on port 80.
+
+Step 3 Score: 3
+The Deployment for MySQL is missing configuration for PersistentVolumeClaims, which are important for data persistence.
+
+Step 4 Score: 3
+The Service for MySQL lacks specifying the targetPort, which is necessary for the connection to MySQL pods.
+
+Based on the analysis, it seems that the YAML manifests provided by Expert 1 are almost accurate, with some minor missing details in the MySQL Deployment and Service. The consensus solution would be to adjust the MySQL Deployment to include PersistentVolumeClaims and update the Service for MySQL to specify the targetPort.

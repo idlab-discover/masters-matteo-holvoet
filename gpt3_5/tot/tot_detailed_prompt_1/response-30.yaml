@@ -1,0 +1,70 @@
+Expert 1:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+Expert 2:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: username
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: password
+```
+
+Expert 3:
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-configmap
+data:
+  DATABASE_NAME: wordpress
+  DATABASE_USER: wp_user
+  DATABASE_PASSWORD: wp_password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+data:
+  username: <base64-encoded-username>
+  password: <base64-encoded-password>
+```

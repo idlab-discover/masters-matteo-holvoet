@@ -1,0 +1,217 @@
+```yaml
+# Advanced Kubernetes Architecture for a Scalable E-Commerce Platform
+
+# Microservice 1 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: microservice1
+  template:
+    metadata:
+      labels:
+        app: microservice1
+    spec:
+      containers:
+        - name: microservice1
+          image: <microservice1_image>
+          ports:
+            - containerPort: 8080
+
+---
+
+# Microservice 2 StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: microservice2
+spec:
+  serviceName: "microservice2"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: microservice2
+  template:
+    metadata:
+      labels:
+        app: microservice2
+    spec:
+      containers:
+        - name: microservice2
+          image: <microservice2_image>
+          ports:
+            - containerPort: 8080
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+
+# Microservice 3 DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: microservice3
+spec:
+  selector:
+    matchLabels:
+      app: microservice3
+  template:
+    metadata:
+      labels:
+        app: microservice3
+    spec:
+      containers:
+        - name: microservice3
+          image: <microservice3_image>
+          ports:
+            - containerPort: 8080
+
+---
+
+# Ingress Controller for Secure Communication
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-controller
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: ecommerce.example.com
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: microservice1
+                port:
+                  number: 8080
+
+---
+
+# Horizontal Autoscaling based on Custom Metrics
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: custom-metrics-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: microservice1
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: custom-metric
+        target:
+          type: AverageValue
+          averageValue: 50
+
+---
+
+# Monitoring and Logging Deployment
+apiVersion: v1
+kind: Pod
+metadata:
+  name: monitoring-logging
+spec:
+  containers:
+    - name: monitoring
+      image: <monitoring_image>
+    - name: logging
+      image: <logging_image>
+
+---
+
+# Security Mechanisms
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: role-binding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: default
+
+---
+
+# CI/CD Pipeline Integration
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ci-cd-pipeline
+spec:
+  tasks:
+    - name: build
+      taskRef:
+        name: build-task
+    - name: deploy
+      taskRef:
+        name: deploy-task
+
+---
+
+# Service Mesh Deployment with Istio
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: istio
+  template:
+    metadata:
+      labels:
+        app: istio
+    spec:
+      containers:
+        - name: istio
+          image: <istio_image>
+          ports:
+            - containerPort: 8080
+
+---
+
+# Cloud-Native Storage Integration
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2
+reclaimPolicy: Retain
+
+---
+
+# Kubernetes Cluster Optimization
+apiVersion: v1
+kind: Pod
+metadata:
+  name: optimization-pod
+spec:
+  containers:
+    - name: optimization
+      image: <optimization_image>
+```

@@ -1,0 +1,148 @@
+```yaml
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-db-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-db-secret
+              key: password
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-secret
+              key: root_password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-secret
+              key: database_name
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-secret
+              key: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-secret
+              key: password
+      volumeClaimTemplates:
+      - metadata:
+          name: mysql-data
+        spec:
+          accessModes: [ "ReadWriteOnce" ]
+          resources:
+            requests:
+              storage: 1Gi
+
+---
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+
+---
+# ConfigMap for WordPress DB Config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-db-config
+data:
+  database_name: wordpress
+  username: wp_user
+
+---
+# Secret for WordPress DB Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-db-secret
+type: Opaque
+data:
+  username: d3BfdXNlcg== # base64 encoded value for 'wp_user'
+  password: VXNlci1wYXNzd29yZA== # base64 encoded value for 'User-password-123'
+
+---
+# Secret for MySQL DB Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-db-secret
+type: Opaque
+data:
+  root_password: cGFzc3dvcmQxMjM= # base64 encoded value for 'password123'
+  database_name: d29yZHByZXNz # base64 encoded value for 'wordpress'
+  user: bXlzc3dvcmQ= # base64 encoded value for 'mysqluser'
+  password: cGFzc3dvcmQ= # base64 encoded value for 'password'
+
+```

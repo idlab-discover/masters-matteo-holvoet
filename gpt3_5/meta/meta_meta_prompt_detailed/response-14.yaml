@@ -1,0 +1,149 @@
+```yaml
+# WordPress Deployment with Horizontal Pod Autoscaler
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+        ports:
+        - containerPort: 80
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+```
+
+```yaml
+# MySQL StatefulSet with Persistent Volume
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+```
+
+```yaml
+# Network Policy for WordPress and MySQL Pods
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-netpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+```
+
+```yaml
+# WordPress and MySQL Backup and Disaster Recovery Strategy
+
+# Implement backup and disaster recovery processes for WordPress and MySQL data to external storage solutions or backup services.
+# Utilize tools like Velero for Kubernetes backup and restore functionality.
+# Ensure regular backups are taken and tested for reliability in case of data loss or corruption.
+```
+
+```yaml
+# Pod Disruption Budget for WordPress and MySQL Pods
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: wordpress-pdb
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  maxUnavailable: 1
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: mysql-pdb
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  maxUnavailable: 1
+```
+
+```yaml
+# Advanced Monitoring and Logging Solutions
+
+# Explore monitoring tools like Prometheus for metrics collection and Grafana for visualization.
+# Set up logging solutions using Fluentd or EFK stack (Elasticsearch, Fluentd, Kibana) for log aggregation and analysis.
+# Configure alerts based on performance metrics to detect and troubleshoot issues proactively.
+```
+
+```yaml
+# Custom Resource Definitions for Extending Functionality
+
+# Define custom resources to manage specific application requirements or configurations beyond standard Kubernetes objects.
+# Use Custom Resource Definitions (CRDs) to create custom resources like CronTabs, Operators, or specialized controllers.
+# Leverage CRDs to automate complex tasks, define application-specific settings, or integrate with external systems.
+```

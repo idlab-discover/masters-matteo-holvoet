@@ -1,0 +1,134 @@
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wordpress-mysql-pod
+spec:
+  containers:
+    - name: mysql
+      image: mysql:latest
+      env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+    - name: wordpress
+      image: wordpress:latest
+      env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: password
+```
+Expert 1:
+I would start by defining a Pod manifest for deploying both WordPress and MySQL containers together. I'll name the Pod "wordpress-mysql-pod" as it will host both containers. For the MySQL container, I will use the official MySQL image and set the required environment variables MYSQL_ROOT_PASSWORD and MYSQL_DATABASE. For the WordPress container, I will use the official WordPress image and set the environment variables WORDPRESS_DB_HOST (pointing to the MySQL container within the Pod), WORDPRESS_DB_NAME, and WORDPRESS_DB_PASSWORD.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+            - name: MYSQL_DATABASE
+              value: wordpress
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_PASSWORD
+              value: password
+```
+Expert 2:
+Expanding on the previous Pod setup, we can now separate concerns by creating a Service to expose the WordPress website and MySQL database internally in the cluster. I will name the Service "wordpress-mysql-service" and define a selector to associate it with the "wordpress-mysql" Pod. For the Deployment, I'll create a replica set of 1 for our Pod. I'll also update the labels and selectors to match this new setup. This way, we can easily scale the deployment if needed.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - protocol: TCP
+      port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+            - name: MYSQL_DATABASE
+              value: wordpress
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql-service
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_PASSWORD
+              value: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: wordpress-mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+```
+Expert 3:
+Taking inspiration from previous explanations, I am refining the Service setup to provide better connectivity. I'm updating the WordPress container's environment variable WORDPRESS_DB_HOST to use the Service name "mysql-service" instead of directly referencing the container name. This change allows easier service discovery within the Kubernetes cluster. Additionally, I'm introducing a new separate Service named "mysql-service" for the MySQL container to expose the MySQL database port 3306 within the cluster.
+
+This collective effort results in a comprehensive Kubernetes setup for deploying a WordPress website with a MySQL backend.

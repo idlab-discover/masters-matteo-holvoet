@@ -1,0 +1,86 @@
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress-container-123
+          image: wordpress:latest
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  labels:
+    app: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-statefulset
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql-service
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql-container
+          image: mysql:latest
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+```
+
+```yaml
+Annotations:
+- The WordPress frontend is deployed as a Deployment with 3 replicas to ensure high availability and load balancing. Each container is named uniquely for identification purposes.
+- Resource limits and requests are set for both WordPress and MySQL containers to optimize resource allocation and performance efficiency.
+- A StatefulSet is used for MySQL backend for stable and unique network identifiers which is crucial for databases.
+- Separate Services are defined for WordPress and MySQL containers to allow internal communication and load balancing efficiently.
+- Consideration for disaster recovery can be further enhanced by implementing persistent volumes for MySQL data storage and employing backups for WordPress content.
+- Following best practices, resource requests and limits are defined to prevent resource contention and ensure stability under varying loads.
+```

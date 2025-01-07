@@ -1,0 +1,613 @@
+```yaml
+# Expert 1
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque
+data:
+  username: base64encoded_username
+  password: base64encoded_password
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  my.cnf: |
+    [mysqld]
+    bind-address = 0.0.0.0
+    port = 3306
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          envFrom:
+            - configMapRef:
+                name: mysql-config
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: password
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  wp-config.php: |
+    define('DB_NAME', 'wordpress');
+    define('DB_USER', 'base64encoded_username');
+    define('DB_PASSWORD', 'base64encoded_password');
+    define('DB_HOST', 'mysql');
+    define('DB_CHARSET', 'utf8');
+    define('DB_COLLATE', '');
+    define('AUTH_KEY', 'base64encoded_auth_key');
+    define('SECURE_AUTH_KEY', 'base64encoded_secure_auth_key');
+    define('LOGGED_IN_KEY', 'base64encoded_logged_in_key');
+    define('NONCE_KEY', 'base64encoded_nonce_key');
+    define('AUTH_SALT', 'base64encoded_auth_salt');
+    define('SECURE_AUTH_SALT', 'base64encoded_secure_auth_salt');
+    define('LOGGED_IN_SALT', 'base64encoded_logged_in_salt');
+    define('NONCE_SALT', 'base64encoded_nonce_salt')
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-secrets
+type: Opaque
+data:
+  db_username: base64encoded_db_username
+  db_password: base64encoded_db_password
+  auth_key: base64encoded_auth_key
+  secure_auth_key: base64encoded_secure_auth_key
+  logged_in_key: base64encoded_logged_in_key
+  nonce_key: base64encoded_nonce_key
+  auth_salt: base64encoded_auth_salt
+  secure_auth_salt: base64encoded_secure_auth_salt
+  logged_in_salt: base64encoded_logged_in_salt
+  nonce_salt: base64encoded_nonce_salt
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          envFrom:
+            - configMapRef:
+                name: wordpress-config
+          env:
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db_username
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db_password
+            - name: AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: auth_key
+            - name: SECURE_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: secure_auth_key
+            - name: LOGGED_IN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: logged_in_key
+            - name: NONCE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: nonce_key
+            - name: AUTH_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: auth_salt
+            - name: SECURE_AUTH_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: secure_auth_salt
+            - name: LOGGED_IN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: logged_in_salt
+            - name: NONCE_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: nonce_salt
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+  type: NodePort
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          envFrom:
+            - configMapRef:
+                name: mysql-config
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: password
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque
+data:
+  username: base64encoded_username
+  password: base64encoded_password
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  my.cnf: |
+    [mysqld]
+    bind-address = 0.0.0.0
+    port = 3306
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          envFrom:
+            - configMapRef:
+                name: mysql-config
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: password
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  wp-config.php: |
+    define('DB_NAME', 'wordpress');
+    define('DB_USER', 'base64encoded_username');
+    define('DB_PASSWORD', 'base64encoded_password');
+    define('DB_HOST', 'mysql');
+    define('DB_CHARSET', 'utf8');
+    define('DB_COLLATE', '');
+    define('AUTH_KEY', 'base64encoded_auth_key');
+    define('SECURE_AUTH_KEY', 'base64encoded_secure_auth_key');
+    define('LOGGED_IN_KEY', 'base64encoded_logged_in_key');
+    define('NONCE_KEY', 'base64encoded_nonce_key');
+    define('AUTH_SALT', 'base64encoded_auth_salt');
+    define('SECURE_AUTH_SALT', 'base64encoded_secure_auth_salt');
+    define('LOGGED_IN_SALT', 'base64encoded_logged_in_salt');
+    define('NONCE_SALT', 'base64encoded_nonce_salt')
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-secrets
+type: Opaque
+data:
+  db_username: base64encoded_db_username
+  db_password: base64encoded_db_password
+  auth_key: base64encoded_auth_key
+  secure_auth_key: base64encoded_secure_auth_key
+  logged_in_key: base64encoded_logged_in_key
+  nonce_key: base64encoded_nonce_key
+  auth_salt: base64encoded_auth_salt
+  secure_auth_salt: base64encoded_secure_auth_salt
+  logged_in_salt: base64encoded_logged_in_salt
+  nonce_salt: base64encoded_nonce_salt
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          envFrom:
+            - configMapRef:
+                name: wordpress-config
+          env:
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db_username
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db_password
+            - name: AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: auth_key
+            - name: SECURE_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: secure_auth_key
+            - name: LOGGED_IN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: logged_in_key
+            - name: NONCE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: nonce_key
+            - name: AUTH_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: auth_salt
+            - name: SECURE_AUTH_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: secure_auth_salt
+            - name: LOGGED_IN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: logged_in_salt
+            - name: NONCE_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: nonce_salt
+
+---
+```
+
+```yaml
+# Expert 3
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+```
+
+```yaml
+# Expert 1
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+  type: NodePort
+
+---
+```
+
+```yaml
+# Expert 2
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+
+---
+```

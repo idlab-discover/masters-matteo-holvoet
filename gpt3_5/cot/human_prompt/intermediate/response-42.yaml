@@ -1,0 +1,157 @@
+Step 1: Create a PersistentVolume for MySQL database storage
+
+Create a file named pv.yaml with the following content:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/mysql
+```
+
+Apply the PersistentVolume manifest by running the command:
+
+```
+kubectl apply -f pv.yaml
+```
+
+Step 2: Create a PersistentVolumeClaim for MySQL database
+
+Create a file named pvc.yaml with the following content:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Apply the PersistentVolumeClaim manifest by running the command:
+
+```
+kubectl apply -f pvc.yaml
+```
+
+Step 3: Create a Secret for MySQL root password
+
+Create a file named mysql-secret.yaml with the following content:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: mysecretpassword
+```
+
+Apply the Secret manifest by running the command:
+
+```
+kubectl apply -f mysql-secret.yaml
+```
+
+Step 4: Deploy MySQL database
+
+Create a file named mysql-deployment.yaml with the following content:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-persistent-storage
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+```
+
+Apply the MySQL Deployment manifest by running the command:
+
+```
+kubectl apply -f mysql-deployment.yaml
+```
+
+Step 5: Deploy WordPress website
+
+Create a file named wordpress-deployment.yaml with the following content:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_USER
+              value: root
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+          ports:
+            - containerPort: 80
+```
+
+Apply the WordPress Deployment manifest by running the command:
+
+```
+kubectl apply -f wordpress-deployment.yaml
+```
+
+Congratulations! You have successfully deployed a WordPress website with a MySQL database backend in Kubernetes.

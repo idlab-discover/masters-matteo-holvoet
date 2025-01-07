@@ -1,0 +1,110 @@
+```yaml
+# MySQL StatefulSet for database replication and failover
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-statefulset
+spec:
+  serviceName: mysql-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: examplepassword
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 15
+          periodSeconds: 20
+
+---
+
+# WordPress Deployment for scalable architecture
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-headless
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 20
+          periodSeconds: 25
+
+---
+
+# Network Policy to restrict network access between WordPress and MySQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-allow-from-wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+
+---
+
+# Helm Chart for managing WordPress deployment
+# Sample Helm commands for reference:
+# helm repo add bitnami https://charts.bitnami.com/bitnami
+# helm install wordpress bitnami/wordpress
+# helm install mysql bitnami/mysql
+# helm upgrade --install wordpress bitnami/wordpress
+# helm upgrade --install mysql bitnami/mysql
+
+---
+
+# Admission Controller for enforcing custom policies and security measures
+
+---
+
+# CI/CD Pipeline Configuration for automating the deployment and updates of WordPress and MySQL
+
+```
