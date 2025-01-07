@@ -1,0 +1,120 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_USER
+              value: wordpressuser
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: rootpassword
+            - name: MYSQL_DATABASE
+              value: wordpress
+            - name: MYSQL_USER
+              value: wordpressuser
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-mysql
+type: Opaque
+data:
+  rootpassword: bXlzcWxSb290UGFzc3dvcmQ=
+  password: d29yZHByZXNzUGFzc3dvcmQ=
+```
+
+This YAML manifest defines:
+- A dedicated `Namespace` for organizing the WordPress and MySQL resources.
+- Two `Deployment` resources to describe the application instances: one for WordPress and one for MySQL.
+- Two `Service` resources to expose both applications within the cluster.
+- A `Secret` resource to store sensitive information such as passwords.
+
+Notes:
+- The `WORDPRESS_DB_HOST` in the WordPress container is set to `mysql`, corresponding to the MySQL service name, allowing WordPress to connect to the MySQL instance.
+- Environment variables in MySQL and WordPress ensure connectivity and authentication.
+- The passwords are base64 encoded in the Secret. 

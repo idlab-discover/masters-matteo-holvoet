@@ -1,0 +1,194 @@
+Here is a complete YAML manifest that contains all the necessary configurations to deploy a WordPress website with a MySQL database on Kubernetes. This single YAML file includes the `Secret`, `PersistentVolume`, `PersistentVolumeClaim`, `Deployment`, and `Service` configurations for both WordPress and MySQL.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  labels:
+    app: wordpress
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-root-password>
+  mysql-user: <base64-encoded-user>
+  mysql-password: <base64-encoded-password>
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  labels:
+    app: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  labels:
+    app: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+    tier: frontend
+```
+
+Remember to replace `<base64-encoded-root-password>`, `<base64-encoded-user>`, and `<base64-encoded-password>` with your actual base64-encoded credentials. Use `echo -n 'your_password' | base64` to convert your password or username to base64. Adjust the `hostPath` for volumes if using cloud resources, as they might manage persistent storage differently.

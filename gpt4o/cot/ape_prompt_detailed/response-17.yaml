@@ -1,0 +1,155 @@
+Certainly! Below is the complete YAML manifest wrapped within ```yaml blocks, consolidating all components into one file.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: {{<root-password-base64>}}
+  mysql-password: {{<user-password-base64>}}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  wordpress-database: wordpress
+  wordpress-username: wpuser
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+      
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: wordpress-database
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: wordpress-username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: wordpress-username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: wordpress-database
+        ports:
+        - containerPort: 80
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  selector:
+    app: wordpress
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+In the above YAML:
+1. Replace `{{<root-password-base64>}}` and `{{<user-password-base64>}}` with the actual base64-encoded values of the root password and the user password.
+2. Ensure that your cluster configuration allows for `LoadBalancer` services. If using a local or restricted cluster setup, you might want to switch the `wordpress` Service type to `NodePort`.

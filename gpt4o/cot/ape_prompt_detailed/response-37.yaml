@@ -1,0 +1,139 @@
+Certainly! Below is the complete YAML manifest, which combines all the components necessary to set up a WordPress website with a MySQL backend in a Kubernetes environment. Each section of the YAML is separated by '---' to maintain clarity and ensure proper Kubernetes resource creation.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <base64_root_password>
+  mysql-password: <base64_wordpress_password>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_NAME: wordpress
+  WORDPRESS_DB_USER: wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-fpm
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+**Note**: Replace `<base64_root_password>` and `<base64_wordpress_password>` with the base64-encoded values of your respective passwords. To encode a string to base64, you can use a command like `echo -n 'your-password' | base64`. Make sure you execute this command locally and replace the placeholders with the outputted values.

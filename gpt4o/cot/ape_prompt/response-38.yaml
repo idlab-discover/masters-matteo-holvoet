@@ -1,0 +1,185 @@
+Below is a single YAML file that combines all the necessary resources for deploying a WordPress website with a MySQL backend in Kubernetes. This manifest assumes the presence of a Kubernetes cluster and `kubectl` configured to communicate with it. It encompasses the namespace, secrets, persistent volumes, deployments, and services.
+
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-password>
+  mysql-user: <base64-encoded-username>
+  mysql-password: <base64-encoded-password>
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: wordpress
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/mnt/data/mysql"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+  namespace: wordpress
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/mnt/data/wordpress"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-storage
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+**Note:** Be sure to replace the `<base64-encoded-password>` and `<base64-encoded-username>` placeholders with your actual base64-encoded values for the MySQL credentials. You can generate them with the command `echo -n "value" | base64`.

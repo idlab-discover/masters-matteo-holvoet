@@ -1,0 +1,132 @@
+Certainly! Here is the complete Kubernetes YAML manifest wrapped within ```yaml blocks for proper formatting. This file includes all the necessary components to deploy a WordPress site with a MySQL backend.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-root-password>
+  mysql-user: <base64-encoded-username>
+  mysql-password: <base64-encoded-password>
+  mysql-database: <base64-encoded-database>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_NAME: <your-database-name>
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        envFrom:
+        - configMapRef:
+            name: wordpress-config
+        env:
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+**Note:** Be sure to replace any placeholders like `<base64-encoded-root-password>`, `<base64-encoded-username>`, `<base64-encoded-password>`, and `<your-database-name>` with actual values specific to your setup. The base64 encoded values can be generated using tools or commands to encode plain text for security purposes.

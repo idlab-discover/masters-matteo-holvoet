@@ -1,0 +1,231 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-production
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+  clusterIP: None
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-production
+  labels:
+    app: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: fast
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-production
+  labels:
+    app: wordpress
+    tier: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+            - name: MYSQL_DATABASE
+              value: wordpress
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-production
+type: Opaque
+data:
+  password: c2VjdXJlUGFzc3dvcmQ= # Base64 encoded 'securePassword'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-production
+  labels:
+    app: wordpress
+    tier: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:php7.4-apache
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql.wordpress-production.svc.cluster.local
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-production
+  labels:
+    app: wordpress
+    tier: frontend
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+  namespace: wordpress-production
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - your-wordpress-site.com
+      secretName: tls-secret
+  rules:
+    - host: your-wordpress-site.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress
+                port:
+                  number: 80
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: wordpress-production
+spec:
+  schedule: "0 2 * * *" # Daily at 2AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mysql-backup-container
+              image: mysql:5.7
+              command: ["sh", "-c", "mysqldump -h mysql -u root --password=$MYSQL_ROOT_PASSWORD wordpress > /backup/backup.sql"]
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: password
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: backup-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pv-claim
+  namespace: wordpress-production
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: backup
+```
+
+### Additional Considerations:
+
+**Capacity Planning & Scalability:**
+- WordPress replicas set to 3 for basic fault tolerance, can be increased during high traffic.
+- Use of `requests` and `limits` in resources to ensure quality of service under load.
+
+**Security:**
+- TLS is enforced at the ingress level using `tls-secret`, which must be created with your domain's certificate.
+- MySQL password is kept in a Kubernetes secret, avoiding plain text exposure.
+
+**Backup & Disaster Recovery:**
+- CronJob for MySQL backups, stores dumps in a dedicated persistent volume.
+
+**Storage Solutions:**
+- Consider Network File Systems (NFS) for shared storage or cloud provider specific solutions like AWS EFS for scalability.
+
+**CI/CD Practices:**
+- Utilize a tool like ArgoCD or Spinnaker for deployment automation.
+- Implement rolling updates to minimize downtime with readiness and liveness probes.
+```

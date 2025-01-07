@@ -1,0 +1,100 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: example
+        - name: MYSQL_DATABASE
+          value: wordpress
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-app
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          value: example
+        ports:
+        - containerPort: 80
+---
+```
+
+This YAML manifest sets up both the WordPress and MySQL components necessary for the website. It creates a namespace called `wordpress-app` and deploys the WordPress and MySQL applications within this namespace. The MySQL instance uses a persistent volume claim to store its data, which helps ensure data resiliency. The WordPress deployment references the MySQL service to establish a database connection using environment variables.

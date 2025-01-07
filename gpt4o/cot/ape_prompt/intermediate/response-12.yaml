@@ -1,0 +1,170 @@
+To create a Kubernetes YAML manifest for deploying a WordPress website with a MySQL database, we'll follow these steps carefully:
+
+### Step 1: Create a Secret for MySQL Password
+
+First, we'll create a Kubernetes Secret to store the MySQL root password and the WordPress database password.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: default
+type: Opaque
+data:
+  root-password: cGFzc3dvcmQ=  # base64 encoded value of "password"
+  wordpress-password: cGFzc3dvcmQ=  # base64 encoded value of "password"
+```
+
+In this example, we're using `password` for both the MySQL root password and WordPress database password. These base64 strings must be replaced with your actual passwords encoded in base64.
+
+### Step 2: Define the MySQL Deployment
+
+Create a MySQL Deployment with a PersistentVolumeClaim for data storage.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-pass
+                key: root-password
+          - name: MYSQL_DATABASE
+            value: wordpress
+          - name: MYSQL_USER
+            value: wordpress
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-pass
+                key: wordpress-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+### Step 3: Define the MySQL PersistentVolumeClaim
+
+Ensure persistent storage for MySQL using a PersistentVolumeClaim.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: default
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+### Step 4: Define the WordPress Deployment
+
+Create a WordPress Deployment that connects to the MySQL database.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: wordpress-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+```
+
+### Step 5: Create Services for WordPress and MySQL
+
+Expose both WordPress and MySQL using Services.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: default
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+    tier: frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+```
+
+These steps create a complete setup of a WordPress application with a MySQL backend in a Kubernetes cluster. Make sure to encode your actual passwords in base64 format for the Secret. Also, check the storage class in your Kubernetes cluster and adjust the PersistentVolumeClaim if needed.

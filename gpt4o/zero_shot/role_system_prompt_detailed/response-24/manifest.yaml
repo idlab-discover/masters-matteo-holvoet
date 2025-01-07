@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-example
+---
+apiVersion: v1
+data:
+  mysql-database: d29yZHByZXNz
+  mysql-password: d3Bwd2Q=
+  mysql-root-password: cGFzc3dvcmQ=
+  mysql-user: d3B1c2Vy
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-example
+type: Opaque
+---
+apiVersion: v1
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_NAME: wordpress
+  WORDPRESS_DB_USER: wpuser
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-example
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - envFrom:
+        - secretRef:
+            name: mysql-secret
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-example
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: wordpress-config
+        - secretRef:
+            name: mysql-secret
+        image: wordpress:php7.4-apache
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-example
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-example
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql

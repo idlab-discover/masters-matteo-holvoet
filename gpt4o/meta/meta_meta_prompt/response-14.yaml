@@ -1,0 +1,214 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-mysql
+type: Opaque
+data:
+  mysql-root-password: <base64-root-password>
+  mysql-user-password: <base64-user-password>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user-password
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.wordpress-mysql.svc.cluster.local
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-persistent-storage
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-autoscaler
+  namespace: wordpress-mysql
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+  namespace: wordpress-mysql
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - wordpress.example.com
+    secretName: wordpress-tls
+  rules:
+  - host: wordpress.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress
+            port:
+              number: 80
+```
+
+This YAML manifest provides a comprehensive Kubernetes setup for deploying WordPress with MySQL with considerations for scalability, security, high availability, and performance:
+- **High Availability**: Multiple replicas for both WordPress and MySQL which aids failover.
+- **Autoscaling**: WordPress deployment autoscaler to handle varying loads.
+- **Security**: Secrets for storing sensitive data, MySQL secure service name access, and HTTPS configured with Ingress.
+- **Persistency**: PersistentVolumeClaims for both WordPress and MySQL to ensure data persists across pod restarts.
+- **Disaster Recovery**: Regular backups of data should be handled externally, e.g., by backup tools not shown in this YAML.
+- **Resource Optimization**: Resource requests and limits for containers.
+- **Network Configuration**: LoadBalancer and Ingress for traffic management from external sources.

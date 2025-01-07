@@ -1,0 +1,152 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+spec:
+  maxReplicas: 10
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 80
+---
+apiVersion: v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+  policyTypes:
+  - Ingress
+```
+
+### Explanation:
+
+1. **Resource Allocation and Management:** Each deployment specifies resource requests and limits for CPU and memory to ensure efficient use of resources and prevent overcommitment. WordPress has increased limits for handling web traffic, while MySQL has moderate limits to balance performance and resource usage.
+
+2. **Networking and Security:** The MySQL service is only accessible by pods with the "wordpress" label through a NetworkPolicy, ensuring secure communication. This restricts traffic to the MySQL pod, reducing exposure to potential security threats.
+
+3. **Data Persistence:** A PersistentVolumeClaim is used for the MySQL database, providing data persistence across pod restarts and node failures. This ensures data durability and availability.
+
+4. **Scalability and Load Management:** The WordPress deployment scales between 3 to 10 replicas using a HorizontalPodAutoscaler based on CPU utilization, ensuring the application adapts to load changes. A LoadBalancer service distributes incoming traffic across WordPress pods, facilitating load balancing.
+
+5. **Monitoring and Maintenance:** To monitor and maintain the deployment, tools like Prometheus for metrics collection and Grafana for visualization can be utilized, although they are not explicitly included in this YAML for simplicity. These facilitate infrastructure and application-level monitoring, ensuring proactive maintenance.

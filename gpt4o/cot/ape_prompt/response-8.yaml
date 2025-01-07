@@ -1,0 +1,174 @@
+Certainly! Below is the complete Kubernetes YAML manifest to deploy a WordPress website using a MySQL database as the backend. The file includes `PersistentVolume`, `PersistentVolumeClaim`, `Secret`, `Deployment`, and `Service` resources for both WordPress and MySQL.
+
+```yaml
+---
+# Persistent Volume for MySQL
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/mysql"
+---
+# Persistent Volume Claim for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Secret for MySQL Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: c2VjdXJlcGFzc3dvcmQK  # base64 encoded 'securepassword'
+---
+# Deployment for MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+# Service for MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+# Persistent Volume for WordPress
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/wordpress"
+---
+# Persistent Volume Claim for WordPress
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Deployment for WordPress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+# Service for WordPress
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+### Explanation
+- **PersistentVolume** and **PersistentVolumeClaim** are set up for both MySQL and WordPress to handle persistent storage.
+- The **Secret** stores the MySQL password in an encoded format (`securepassword`, encoded in Base64).
+- **Deployment** resources define the setup for MySQL and WordPress Pods, ensuring persistent data storage and proper database connectivity.
+- **Service** resources expose MySQL internally and WordPress externally as a web service.
+
+To deploy, save this configuration to a file (e.g., `wordpress-mysql.yaml`) and apply it using:
+
+```bash
+kubectl apply -f wordpress-mysql.yaml
+```
+
+Make sure your Kubernetes cluster supports the necessary features, and adapt paths and storage types as needed depending on your environment.

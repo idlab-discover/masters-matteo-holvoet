@@ -1,0 +1,147 @@
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: dXNlckV4YW1wbGU= # base64 encoded "userExample"
+  mysql-database: d29yZHByZXNz # base64 encoded "wordpress"
+  mysql-user: d3AtdXNlcg== # base64 encoded "wp-user"
+  mysql-password: d3BzZWNyZXQ= # base64 encoded "wpsecret"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-configmap
+data:
+  WORDPRESS_DB_HOST: mysql-service
+  WORDPRESS_DB_USER: wp-user
+  WORDPRESS_DB_NAME: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-configmap
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-configmap
+              key: WORDPRESS_DB_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-configmap
+              key: WORDPRESS_DB_NAME
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+  - protocol: TCP
+    port: 3306
+    targetPort: 3306
+  clusterIP: None
+```

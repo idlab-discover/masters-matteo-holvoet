@@ -1,0 +1,122 @@
+Creating a Kubernetes YAML manifest to deploy a WordPress website with a MySQL database involves several important steps, including defining deployment and service resources. Below, I've created Kubernetes YAML manifests for a WordPress container and a MySQL container.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: rootpassword
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  clusterIP: None
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: d29yZHByZXNz # Base64 encoded value of 'wordpress'
+  rootpassword: cm9vdHBhc3N3b3Jk # Base64 encoded value of 'rootpasswd'
+```
+
+### Breakdown of YAML Manifest:
+
+1. **WordPress Deployment and Service:**
+   - Defined a Deployment for WordPress with the container named "wordpress".
+   - Specified environmental variables for the WordPress container to connect to the MySQL database.
+   - Created a LoadBalancer Service for WordPress to expose it on port 80.
+
+2. **MySQL Deployment and Service:**
+   - Defined a Deployment for MySQL with the container named "mysql".
+   - Included environmental variables for MySQL database details.
+   - Created a Headless Service for MySQL, allowing for a StatefulSet type of behavior.
+
+3. **Secret for MySQL Passwords:**
+   - Created a Kubernetes Secret to hold the MySQL user and root passwords (encoded in Base64).
+
+Ensure that the Base64 encoded password values in the Secret are replaced with secure and unique passwords when deploying in a real environment.

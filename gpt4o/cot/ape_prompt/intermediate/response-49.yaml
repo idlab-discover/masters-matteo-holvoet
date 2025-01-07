@@ -1,0 +1,176 @@
+Deploying a WordPress website with a MySQL database in Kubernetes involves creating several Kubernetes resources such as Deployments, Services, and PersistentVolumeClaims. We will go through this step-by-step to ensure everything is set up correctly.
+
+### Step 1: Create a PersistentVolume and PersistentVolumeClaim for MySQL
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  # Choose the appropriate storage class for your environment
+  storageClassName: standard
+  hostPath:
+    path: /mnt/data/mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+### Step 2: Create the MySQL Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: my-secret-pw
+            - name: MYSQL_DATABASE
+              value: wordpress
+            - name: MYSQL_USER
+              value: wp_user
+            - name: MYSQL_PASSWORD
+              value: wp_pass
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+```
+
+### Step 3: Create a Service for MySQL
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None # Setting this to None creates a Headless service
+```
+
+### Step 4: Create a PersistentVolume and PersistentVolumeClaim for WordPress
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  hostPath:
+    path: /mnt/data/wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+### Step 5: Create the WordPress Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_USER
+              value: wp_user
+            - name: WORDPRESS_DB_PASSWORD
+              value: wp_pass
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+          volumeMounts:
+            - name: wordpress-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+```
+
+### Step 6: Create a Service for WordPress
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+### Explanation
+
+- **PersistentVolume and PersistentVolumeClaim**: Used for storing data persistently for both MySQL and WordPress.
+- **Deployments**: Manage the lifecycle of both applications (WordPress and MySQL).
+- **Services**: Expose MySQL for communication with WordPress and expose WordPress externally via a LoadBalancer.
+
+Each step is crucial for ensuring that both services have persistent storage and can communicate with one another. Adjust the `storageClassName`, `hostPath`, and database credentials according to your environment and security needs.

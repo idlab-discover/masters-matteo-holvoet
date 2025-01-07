@@ -1,0 +1,181 @@
+To deploy a WordPress website with a MySQL database as the backend in Kubernetes, you need to create multiple manifest files to manage various components such as Persistent Volumes, Persistent Volume Claims, Deployments, and Services. We will also deploy WordPress and MySQL in separate deployments and services. Here’s a step-by-step approach to create the YAML manifests:
+
+### Step 1: Create Persistent Volumes and Persistent Volume Claims
+
+Creating persistent volumes for both MySQL and WordPress data ensures data persistence when containers stop or restart.
+
+**`mysql-pv.yaml`**:
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+**`wordpress-pv.yaml`**:
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Step 2: Deploy the MySQL Database
+
+Create a deployment for the MySQL database and a corresponding service to expose it within the cluster.
+
+**`mysql-deployment.yaml`**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "your-root-password"
+            - name: MYSQL_DATABASE
+              value: "wordpress"
+            - name: MYSQL_USER
+              value: "wordpress"
+            - name: MYSQL_PASSWORD
+              value: "wordpress-password"
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  clusterIP: None  # Headless service
+```
+
+### Step 3: Deploy the WordPress Service
+
+Create a deployment for the WordPress application and a corresponding service to expose it to the outer world.
+
+**`wordpress-deployment.yaml`**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: "mysql:3306"
+            - name: WORDPRESS_DB_USER
+              value: "wordpress"
+            - name: WORDPRESS_DB_PASSWORD
+              value: "wordpress-password"
+            - name: WORDPRESS_DB_NAME
+              value: "wordpress"
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: wordpress-persistent-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer  # Use NodePort if LoadBalancer is not available
+```
+
+### Step 4: Apply the Manifests
+
+To deploy all of these resources in your Kubernetes cluster, apply the manifests in order:
+
+```sh
+kubectl apply -f mysql-pv.yaml
+kubectl apply -f wordpress-pv.yaml
+kubectl apply -f mysql-deployment.yaml
+kubectl apply -f wordpress-deployment.yaml
+```
+
+Ensure that you replace environment variable values (like passwords) with secure and meaningful values specific to your setup before deploying these resources. This manifest setup assumes a hostPath volume for local persistence, which is generally suitable for development environments. For production, consider using a cloud provider's persistent storage solution.

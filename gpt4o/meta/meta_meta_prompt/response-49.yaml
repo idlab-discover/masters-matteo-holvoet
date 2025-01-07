@@ -1,0 +1,215 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mysql
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: mysql
+type: Opaque
+data:
+  password: bXlwYXNzd29yZA== # 'mypassword' base64 encoded
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: mysql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: mysql
+spec:
+  replicas: 1 # Start with one instance, enable scaling options later
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - image: mysql:5.7
+          name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None # Use headless service for potential clustering
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  replicas: 2 # Make scalable through HPA
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - image: wordpress:latest
+          name: wordpress
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql.mysql.svc.cluster.local:3306
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+  namespace: wordpress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: wordpress.example.com
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: wordpress
+              port:
+                number: 80
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+  namespace: mysql
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mysql
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-network-policy
+  namespace: mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: wordpress
+      ports:
+        - protocol: TCP
+          port: 3306
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: wordpress
+      ports:
+        - protocol: TCP
+          port: 80
+```
+

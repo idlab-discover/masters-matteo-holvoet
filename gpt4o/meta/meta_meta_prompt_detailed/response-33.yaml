@@ -1,0 +1,134 @@
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+data:
+  mysql-root-password: <base64-root-password>
+  mysql-password: <base64-mysql-password>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: "db-mysql:3306"
+  WORDPRESS_DB_USER: "wordpress"
+  WORDPRESS_DB_NAME: "wordpress"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cms-wordpress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cms-wordpress
+  template:
+    metadata:
+      labels:
+        app: cms-wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-apache
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: wordpress-config
+        env:
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cms-wordpress
+spec:
+  selector:
+    app: cms-wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+  sessionAffinity: ClientIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db-mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: db-mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: "wordpress"
+        - name: MYSQL_USER
+          value: "wordpress"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-mysql
+spec:
+  selector:
+    app: db-mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  clusterIP: None
+```

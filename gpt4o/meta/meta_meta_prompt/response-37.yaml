@@ -1,0 +1,226 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql:3306
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: username
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  selector:
+    app: wordpress
+  ports:
+    - port: 80
+      targetPort: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: rootpassword
+            - name: MYSQL_DATABASE
+              value: wordpress
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  clusterIP: None
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: mysql
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: mysql-backup
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mysql-backup
+              image: mysql:latest
+              command: ["/bin/bash", "-c", "mysqldump -h mysql -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE > /backup/db-$(date +\\%F).sql"]
+              env:
+                - name: MYSQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: username
+                - name: MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-secret
+                      key: password
+                - name: MYSQL_DATABASE
+                  value: wordpress
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /backup
+          volumes:
+            - name: backup-volume
+              persistentVolumeClaim:
+                claimName: backup-pvc
+          restartPolicy: OnFailure
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```

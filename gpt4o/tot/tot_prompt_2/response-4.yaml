@@ -1,0 +1,99 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress_user
+        - name: WORDPRESS_DB_PASSWORD
+          value: your_wordpress_db_password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress_db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: wordpress_db
+        - name: MYSQL_USER
+          value: wordpress_user
+        - name: MYSQL_PASSWORD
+          value: your_wordpress_db_password
+        - name: MYSQL_ROOT_PASSWORD
+          value: your_root_db_password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - protocol: TCP
+    port: 3306
+    targetPort: 3306
+  clusterIP: None
+```
+
+Note: This is a basic setup for deploying WordPress with a MySQL backend on Kubernetes and is for learning purposes. 
+
+**Considerations:**
+
+1. **Secrets:** In a production environment, do not hardcode passwords in the YAML files. Instead, use Kubernetes secrets.
+2. **Persistent Volumes:** Ensure that both WordPress and MySQL have persistent storage.
+3. **Resource Requests/Limits:** Define appropriate resource requests and limits for each pod based on expected usage.
+4. **Scaling:** Consider replication strategies and autoscaling based on load.
+5. **Security:** Review network policies and security configurations to ensure the application is secure.

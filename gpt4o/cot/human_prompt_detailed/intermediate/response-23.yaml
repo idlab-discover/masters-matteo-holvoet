@@ -1,0 +1,165 @@
+To deploy a WordPress website with a MySQL database on Kubernetes, you'll need to create several Kubernetes resources. We'll break down the process into steps, organizing everything into a YAML manifest for easy deployment.
+
+1. **Create a Secret for MySQL Password**: Use a Kubernetes Secret to store sensitive data like the MySQL root password and the WordPress database password.
+
+2. **Create a ConfigMap for WordPress Configuration**: Use a ConfigMap for non-sensitive configuration data.
+
+3. **Persistent Volumes and Claims**: Define PersistentVolumeClaims for MySQL to ensure data persistence.
+
+4. **Deployments**: Define Deployments for both MySQL and WordPress.
+
+5. **Services**: Create Services to expose WordPress and MySQL internally.
+
+Here's the complete YAML manifest file:
+
+```yaml
+# 1. Secret for MySQL Password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: cHJlcGFyZWRwYXNzd29yZA== # base64 encoded 'preparedpassword'
+  mysql-user-password: c2VjdXJlcGFzcw==  # base64 encoded 'securepass'
+
+---
+# 2. ConfigMap for WordPress Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql:3306
+  WORDPRESS_DB_USER: wordpress
+
+---
+# 3. PersistentVolumeClaim for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# 4a. Deployment for MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+# 4b. Deployment for WordPress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user-password
+        ports:
+        - containerPort: 80
+
+---
+# 5a. Service for MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # Makes the Service headless, allowing direct Pod communication
+
+---
+# 5b. Service for WordPress
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Explanation:
+- **Secrets**: `mysql-secret` stores the MySQL root and user passwords. Remember to use `base64` encoding for the secret values.
+- **ConfigMap**: `wordpress-config` stores non-sensitive configuration data for the WordPress deployment.
+- **PersistentVolumeClaim**: `mysql-pvc` provides storage for the MySQL database, ensuring data is persisted across Pod restarts.
+- **Deployments**: Two separate deployments for MySQL and WordPress, each with appropriate environment variables and volume settings.
+- **Services**: A headless service for MySQL for internal communication and a LoadBalancer service for WordPress to expose it externally.
+
+This manifest provides a basic setup. Adjust the configurations and resource requests/limits according to your production requirements, and make sure your cluster supports LoadBalancer services or adapt the service type accordingly.

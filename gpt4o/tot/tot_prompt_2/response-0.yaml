@@ -1,0 +1,100 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress_user
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress_password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress_db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: root_password
+        - name: MYSQL_DATABASE
+          value: wordpress_db
+        - name: MYSQL_USER
+          value: wordpress_user
+        - name: MYSQL_PASSWORD
+          value: wordpress_password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+```
+
+In this solution, the YAML manifests contain two sets of resources, a Deployment and a Service for both WordPress and MySQL:
+
+1. **WordPress Deployment and Service**:
+   - The `Deployment` creates a single Pod with a `wordpress` container.
+   - Environment variables are set for MySQL connection details.
+   - The `Service` exposes the WordPress Pod on port 80 with a LoadBalancer for external access.
+
+2. **MySQL Deployment and Service**:
+   - The `Deployment` creates a single Pod with a `mysql` container.
+   - Environment variables initialize MySQL root password, database, and user credentials.
+   - The `Service` exposes the MySQL Pod on port 3306 for internal access within the cluster. 
+
+The YAML provided sets up the basic requirement to deploy a WordPress site backed by a MySQL database within a Kubernetes environment. It includes all necessary interconnections between the services, ensuring WordPress can communicate with MySQL using environment variables.

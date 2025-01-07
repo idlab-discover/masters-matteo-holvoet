@@ -1,0 +1,174 @@
+Creating a Kubernetes deployment for a WordPress website with a MySQL backend involves several steps. We need to set up persistent storage, create secrets for sensitive information, and set up the deployments and services for both WordPress and MySQL. Here’s a step-by-step breakdown of the process:
+
+### Step 1: Create a Namespace (Optional)
+
+First, you might want to create a separate namespace for organizational purposes:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-app
+```
+
+### Step 2: Create Persistent Volume Claims
+
+Create persistent storage for MySQL and WordPress, allowing data to persist beyond container restarts.
+
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 3: Create a Secret for the MySQL Password
+
+This secret will hold the password for the MySQL root user.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-app
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ=  # Base64 encoded 'password'
+```
+
+### Step 4: Deploy MySQL
+
+Create a deployment and service for MySQL.
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 5: Deploy WordPress
+
+Create a deployment and service for WordPress.
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:4.8-apache
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: wordpress-persistent-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+### Explanation:
+
+- **Namespace**: Group all resources under `wordpress-app`.
+- **PersistentVolumeClaims (PVCs)**: Manage storage for MySQL and WordPress data.
+- **Secrets**: Store the MySQL root password securely.
+- **MySQL Deployment**: Deploy MySQL with persistent storage and a Cluster IP service for internal communication.
+- **WordPress Deployment**: Deploy WordPress with an environment variable for the DB host and a LoadBalancer service to expose it externally.
+
+Remember to replace the Base64-encoded content and configure storage based on your environment. You might also need to modify the LoadBalancer type depending on your Kubernetes provider.

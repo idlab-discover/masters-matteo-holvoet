@@ -1,0 +1,126 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: root-password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  user: d3d2bA==
+  password: cGFzc3dvcmQK
+  root-password: cm9vdC1wYXNzCg==
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+This set of manifests describes the deployment of a WordPress website with a MySQL backend within a Kubernetes cluster. Key steps and considerations for each YAML segment include:
+
+1. **WordPress Deployment**: The WordPress pod is configured to communicate with the MySQL database using environment variables that reference a Kubernetes `Secret` for sensitive information like database user and password.
+
+2. **MySQL Deployment**: Similarly, the MySQL pod is configured with environment variables. It includes a `MYSQL_DATABASE` to specify that WordPress databases should be created here.
+
+3. **Secret Management**: Sensitive data such as database passwords is stored in a Kubernetes Secret. The data is base64-encoded for security. This showcases a collaborative focus on security considerations.
+
+4. **Service Definitions**: The `Service` resources expose the deployments. The WordPress Service is typed as a `LoadBalancer`, intending to expose the service to an external IP. The MySQL Service uses a headless service to maintain a stable endpoint for inter-pod communication within the cluster.
+
+This setup collaboratively refines the deployment process, ensuring a complete and secure setup for running WordPress on Kubernetes.

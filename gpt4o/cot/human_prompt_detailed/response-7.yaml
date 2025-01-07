@@ -1,0 +1,159 @@
+Certainly! Below is a single YAML file containing the complete manifest for deploying a WordPress site with a MySQL database backend, including configurations for Secrets, ConfigMaps, PersistentVolumeClaims, Deployments, and Services. The YAML block is wrapped with ```yaml for proper formatting.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-mysql-secrets
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-root-password>
+  mysql-user: <base64-encoded-mysql-user>
+  mysql-password: <base64-encoded-user-password>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_NAME: wordpress
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-mysql-secrets
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-mysql-secrets
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-mysql-secrets
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-mysql-secrets
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-mysql-secrets
+              key: mysql-password
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None # For headless service
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
+```
+
+### Instructions
+- Replace `<base64-encoded-root-password>`, `<base64-encoded-mysql-user>`, and `<base64-encoded-user-password>` with the actual base64 encoded values of your credentials.
+- This file assumes access to a container registry to pull images (`mysql:5.7` and `wordpress:latest`).
+- The WordPress service type is set to `LoadBalancer`, which is ideal for cloud providers. Modify the service type if you're deploying on a different platform or require another configuration (e.g., using `NodePort` or an `Ingress`).
+
+### Deployment
+Save this YAML content to a file, e.g., `wordpress-deployment.yaml`, and apply it to your Kubernetes cluster with:
+
+```bash
+kubectl apply -f wordpress-deployment.yaml
+```
+
+This will set up the WordPress application with MySQL as its database, running in a resilient and scalable manner within your Kubernetes cluster.

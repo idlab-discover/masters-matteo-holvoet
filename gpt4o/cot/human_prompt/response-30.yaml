@@ -1,0 +1,149 @@
+Certainly! Below is the complete Kubernetes YAML manifest wrapped within ```yaml blocks for proper formatting. This manifest includes the namespace, MySQL components, and WordPress components, all in one file:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: rootpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          value: wordpresspassword
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpresspassword
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+```
+
+### Key Points
+
+- **Passwords**: The manifest uses simple passwords ("rootpassword", "wordpresspassword") for MySQL root and WordPress database access. In a production environment, ensure these passwords are strong and stored securely, ideally using Kubernetes Secrets.
+- **Storage**: Both MySQL and WordPress are configured to use persistent volumes for storage, with a request for 1Gi of storage each. Adjust these as necessary for your environment.
+- **Namespace**: All resources are created in the `wordpress-mysql` namespace. This helps isolate them in Kubernetes.
+
+To deploy this, save it to a file, say `wordpress-mysql-deployment.yaml`, and apply it with:
+
+```bash
+kubectl apply -f wordpress-mysql-deployment.yaml
+```
+
+Check the status with `kubectl get all -n wordpress-mysql`.

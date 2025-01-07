@@ -1,0 +1,196 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ= # base64 for 'password'
+  mysql-user: d29yZHByZXNz # base64 for 'wordpress'
+  mysql-password: c2VjdXJlcGFzcw== # base64 for 'securepass'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-namespace
+data:
+  wordpress-db-host: wordpress-mysql
+  wordpress-db-name: wordpressdb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpressdb
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: wordpress-db-host
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: wordpress-db-name
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql
+  namespace: wordpress-namespace
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+  namespace: wordpress-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mysql
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+```
+
+### Explanation:
+
+- **Namespaces:** It is used to logically separate the WordPress deployment and related resources.
+
+- **Secrets & ConfigMaps:** Handle sensitive database credentials securely and environment variables dynamically. Lifecycle management requires periodic updates, and tools like `kubectl` can manage this efficiently.
+
+- **PersistentVolumeClaim for MySQL:** Uses `standard` storage class (common for general-purpose operations). The choice of storage class impacts performance and recovery; faster classes such as SSD-backed might enhance performance but at a higher cost.
+
+- **Services:** `ClusterIP` for MySQL offers internal access while `LoadBalancer` for WordPress exposes it externally. Service type selection affects network configurations.
+
+- **HorizontalPodAutoscaler (HPA):** Assures auto-scaling based on current load using metrics like CPU utilization; monitoring tools like Prometheus/Grafana assist in making informed scaling decisions.
+
+**Challenges:**
+- **Restarts & Migrations:** Deployments include strategies like rolling updates to minimize downtime. Use tools like Helm for managing application lifecycle and database migrations. Evaluate CI/CD strategies for effective application updates and database schema migrations.

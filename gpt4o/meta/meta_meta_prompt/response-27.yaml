@@ -1,0 +1,182 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-app
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: wordpress-app
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/mnt/data/mysql"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-app
+type: Opaque
+data:
+  root-password: c3VwZXJzZWNyZXRwYXNzd29yZA== # base64 encoded "supersecretpassword"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:5.9
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.wordpress-app.svc.cluster.local
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        ports:
+        - containerPort: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wp-mysql-policy
+  namespace: wordpress-app
+spec:
+  podSelector:
+    matchLabels: {}
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+    ports:
+    - protocol: TCP
+      port: 3306
+  policyTypes:
+  - Ingress
+```
+
+### Key Considerations and Justifications:
+1. **Horizontal Pod Autoscaling**: The WordPress application uses an HPA to scale based on CPU utilization, ensuring resilience to traffic surges.
+2. **Storage Solution**: MySQL uses a `PersistentVolumeClaim` bound to a `PersistentVolume` with hostPath for simplicity, suitable for development but should be transitioned to managed storage solutions like EBS, GCEPersistentDisk, or Ceph for production environments.
+3. **Security**: Secrets are used to handle sensitive information. A `NetworkPolicy` restricts MySQL access to WordPress pods only.
+4. **Adaptability**: Designed to transition from development to production by replacing hostPath with cloud-managed storage solutions.
+5. **Load Balancer**: An external load balancer for handling incoming traffic efficiently.
+6. **Open-source Tooling**: Using well-supported versions of WordPress and MySQL—manage updates through version pinning and regular maintenance.
+7. **Data Backup**: Implement offsite or cloud-native backup strategies (e.g., snapshotting for production).
+
+This setup is designed to be scalable and robust, with emphasis on smooth transition from development to production, maintaining best practices for data security and system performance.

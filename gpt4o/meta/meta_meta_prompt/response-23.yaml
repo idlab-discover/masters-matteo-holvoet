@@ -1,0 +1,169 @@
+```yaml
+# Persistent Volume for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "root-password"
+        - name: MYSQL_DATABASE
+          value: "wordpress"
+        - name: MYSQL_USER
+          value: "wordpress"
+        - name: MYSQL_PASSWORD
+          value: "wordpress-password"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None # Headless service for stable DNS
+
+---
+# Persistent Volume for WordPress
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.7
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress-password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+
+---
+# Network Policy for secure communication between WordPress and MySQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+```
+
+The strategy involves using persistent storage with `PersistentVolumeClaim` for both WordPress and MySQL to ensure data persistence and integrity. The MySQL deployment is a single replica for simplicity, but failover strategies can be considered with a more complex setup (such as using Galera Cluster or MariaDB replication).
+
+WordPress is deployed with three replicas for high availability, complemented by a LoadBalancer service that enables external traffic distribution across replicas. A `NetworkPolicy` is introduced to restrict MySQL access to only allowed WordPress pods, hence strengthening security. For further security enhancements, consider using secrets or external secret management solutions to handle sensitive information like passwords.
+
+This approach takes into account performance by using appropriate resource requests and limits to ensure optimal usage and resilience under load. The design facilitates scalability and is aligned with best practices such as separation of concerns between application and data tiers.

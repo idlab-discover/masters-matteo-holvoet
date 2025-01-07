@@ -1,0 +1,192 @@
+Deploying a WordPress site with MySQL in Kubernetes involves several components to ensure proper configuration, connectivity, and persistence. We'll break it down into different parts for clarity and conciseness:
+
+1. **Secrets and ConfigMaps**: These will hold sensitive information and configuration settings such as database credentials.
+
+2. **Persistent Volumes and Claims**: These ensure that data for the MySQL database persists even when containers are restarted.
+
+3. **Deployments**: These define the containers for both WordPress and MySQL and their configurations, including environment variables.
+
+4. **Services**: These provide network connectivity to access the WordPress application and communicate with the MySQL database.
+
+### Step 1: Create Secrets for MySQL Credentials
+
+First, we'll create a `Secret` to store the MySQL root password and a database username/password for WordPress:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <BASE64_ENCODED_ROOT_PASSWORD>
+  mysql-user: <BASE64_ENCODED_WORDPRESS_USER>
+  mysql-password: <BASE64_ENCODED_WORDPRESS_PASSWORD>
+```
+
+**Note:** Replace `<BASE64_ENCODED_ROOT_PASSWORD>`, `<BASE64_ENCODED_WORDPRESS_USER>`, and `<BASE64_ENCODED_WORDPRESS_PASSWORD>` with the base64-encoded values of your MySQL root password, WordPress database user, and user password, respectively.
+
+### Step 2: ConfigMaps for WordPress Configuration
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_NAME: wordpress
+```
+
+### Step 3: Persistent Volumes and Claims
+
+Create a `PersistentVolumeClaim` for MySQL to ensure data persistence:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 4: MySQL Deployment
+
+Create a `Deployment` for MySQL that uses the PVC and Secrets:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+### Step 5: WordPress Deployment
+
+Create a `Deployment` for WordPress, setting up environment variables for database access:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+```
+
+### Step 6: Services for Connectivity
+
+Create `Service` resources to expose both MySQL and WordPress:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None  # Headless service for stateful applications
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - port: 80
+  type: LoadBalancer
+```
+
+### Summary:
+
+This setup includes:
+- A `Secret` for MySQL credentials.
+- A `ConfigMap` for WordPress configuration.
+- A `PersistentVolumeClaim` for MySQL data persistence.
+- `Deployments` for WordPress and MySQL, using the respective credentials and configurations.
+- `Services` that provide network access and connectivity between applications.
+
+Make sure to replace base64-encoded secrets with actual values. Additionally, adjust resource sizes and types according to your environment's needs. Apply all these configurations using `kubectl apply -f <filename>` for each YAML segment.

@@ -1,0 +1,174 @@
+Deploying a WordPress website with a MySQL backend in Kubernetes involves creating several resources. Here's a step-by-step breakdown of the YAML manifest needed to set up both the WordPress application and MySQL database:
+
+1. **Create Kubernetes Secrets for MySQL Passwords:**
+   This secret will store the MySQL password securely.
+
+2. **Deploy MySQL Database:**
+   Create a PersistentVolumeClaim for data persistence and a Deployment for running MySQL.
+
+3. **Expose MySQL Service:**
+   Create a Service to expose the MySQL database internally within the cluster.
+
+4. **Deploy WordPress Application:**
+   Create a PersistentVolumeClaim for WordPress data and a Deployment for running the WordPress application.
+
+5. **Expose WordPress Service:**
+   Create a Service to expose the WordPress application, typically as a LoadBalancer for external access.
+
+Here is the YAML manifest implementing the above steps:
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-root-password>   # Replace with base64 of your root password
+  mysql-password: <base64-encoded-password>             # Replace with base64 of your mysql password
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+### Explanations:
+
+- **Secret:** It stores sensitive information such as MySQL passwords in an encrypted form.
+- **PersistentVolumeClaim (PVC):** Ensures the database and WordPress data persist across pod restarts.
+- **MySQL Deployment:** Configures the MySQL container with environment variables and attaches the PVC for storage.
+- **MySQL Service:** A headless service to provide internal cluster access for WordPress to the MySQL database.
+- **WordPress Deployment:** Runs the WordPress application configured to connect with the MySQL database.
+- **WordPress Service:** Exposes the WordPress app to external traffic using a LoadBalancer service type.
+
+Make sure to replace `<base64-encoded-root-password>` and `<base64-encoded-password>` with actual base64-encoded values of the passwords you intend to use.

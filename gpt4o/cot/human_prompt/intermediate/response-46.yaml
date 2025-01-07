@@ -1,0 +1,171 @@
+Creating a Kubernetes YAML manifest to deploy a WordPress site with a MySQL database involves several steps. We'll need to define a few Kubernetes objects to get the deployment, service, and persistent volumes set up correctly. Here's a step-by-step guide:
+
+### Step 1: Define Persistent Volume and Persistent Volume Claim
+
+WordPress and MySQL both require storage—WordPress for its uploads and MySQL for its data. We'll create Persistent Volume Claims (PVC) for both.
+
+#### Persistent Volumes (You may need to set these up based on your environment, but we assume here you're using dynamically provisioned volumes)
+
+Create the `mysql-pvc.yaml` and `wordpress-pvc.yaml`.
+
+```yaml
+# mysql-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+```yaml
+# wordpress-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 2: Define the MySQL Deployment
+
+Create `mysql-deployment.yaml`.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: yourpassword   # Change according to your specific password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+### Step 3: Define the MySQL Service
+
+Create `mysql-service.yaml`.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 4: Define the WordPress Deployment
+
+Create `wordpress-deployment.yaml`.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:5.7
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          value: yourpassword   # It should match your MySQL password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+```
+
+### Step 5: Define the WordPress Service
+
+Create `wordpress-service.yaml`.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer   # You can use NodePort or ClusterIP as per your requirement
+```
+
+### Step 6: Apply the Configurations
+
+Once you have these YAML files ready, apply them in order using `kubectl`.
+
+```bash
+kubectl apply -f mysql-pvc.yaml
+kubectl apply -f wordpress-pvc.yaml
+kubectl apply -f mysql-deployment.yaml
+kubectl apply -f mysql-service.yaml
+kubectl apply -f wordpress-deployment.yaml
+kubectl apply -f wordpress-service.yaml
+```
+
+### Summary
+- We created Persistent Volume Claims for both MySQL and WordPress.
+- We deployed MySQL and set up a service for it.
+- We deployed WordPress and exposed it via a service.
+
+Remember, this is a basic setup. Adjust resources, security settings, and environment-specific parameters as necessary for a production environment.

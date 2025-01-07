@@ -1,0 +1,135 @@
+```yaml
+# Step 1: Define ConfigMap for WordPress environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql-service
+  WORDPRESS_DB_NAME: wordpress_db
+
+---
+# Step 1: Define Secret for MySQL credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: c2VjdXJlcGFzc3dvcmQ=   # base64 encoded for "securepassword"
+  MYSQL_DATABASE: d29yZHByZXNzX2Ri            # base64 encoded for "wordpress_db"
+  MYSQL_USER: d3BfdXNlcg==                    # base64 encoded for "wp_user"
+  MYSQL_PASSWORD: bXlrc3FsX3Bhc3M=            # base64 encoded for "mysql_pass"
+
+---
+# Step 2: Define PersistentVolumeClaim for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Step 2: Define Deployment for MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        envFrom:
+        - secretRef:
+            name: mysql-secret
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+# Step 2: Define Deployment for WordPress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-apache
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 80
+
+---
+# Step 3: Define Service for MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # For headless service
+
+---
+# Step 3: Define Service for WordPress
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```

@@ -1,0 +1,130 @@
+apiVersion: v1
+data:
+  mysql-password: cGFzc3dvcmQ=
+  mysql-root-password: dG9wU2VjcmV0
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+---
+apiVersion: v1
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_NAME: wordpress
+  WORDPRESS_DB_USER: wordpress
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-root-password
+              name: mysql-secret
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_HOST
+              name: wordpress-config
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_USER
+              name: wordpress-config
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_NAME
+              name: wordpress-config
+        image: wordpress:5.7
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer

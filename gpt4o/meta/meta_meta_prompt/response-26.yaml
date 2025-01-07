@@ -1,0 +1,198 @@
+```yaml
+# Persistent Volume for MySQL
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/data/mysql"
+
+---
+
+# Persistent Volume Claim for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None # Ensures the service is assigned a stable IP
+
+---
+
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:php8.0-apache
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 80
+    
+---
+
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+
+---
+
+# Network Policy for Restricting Access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: mysql
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+
+# Secret for MySQL Password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: <base64-encoded-password>
+
+---
+
+# Horizontal Pod Autoscaler for WordPress
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  maxReplicas: 5
+  minReplicas: 3
+  targetCPUUtilizationPercentage: 50
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+
+---
+
+# ConfigMap for WordPress and MySQL Backup and Monitoring Script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ops-config
+data:
+  backup-script.sh: |
+    #!/bin/bash
+    # Script to backup MySQL database
+    mysqldump -u root --password=$MYSQL_ROOT_PASSWORD --all-databases > /backup/db-backup.sql
+  monitoring-config.yaml: |
+    logging:
+      monitoring:
+        - type: prometheus
+          endpoint: /metrics
+        - type: grafana
+          dashboardPath: /opt/grafana/dashboards
+
+```
+
+This setup ensures data persistence using `PersistentVolume` and `PersistentVolumeClaim`, provides scalability with replica-based scaling and `HorizontalPodAutoscaler`, and secures communication with a `NetworkPolicy`. The service type `LoadBalancer` manages load distribution for WordPress pods, while resources for monitoring and backup are managed through `ConfigMap`. The structure helps in maintaining performance, resource optimization, and business continuity.

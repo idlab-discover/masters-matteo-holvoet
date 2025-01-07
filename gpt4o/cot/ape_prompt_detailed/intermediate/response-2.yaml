@@ -1,0 +1,171 @@
+To create a Kubernetes YAML manifest for a WordPress website backed by a MySQL database, you need to break it down into the following key components:
+
+1. **Create Secrets for Sensitive Data (e.g., MySQL Password):**
+   - Store the MySQL root password, WordPress database password, etc.
+
+2. **Create a ConfigMap for WordPress Configuration:**
+   - Store non-sensitive configuration data.
+
+3. **Deploy MySQL with Persistent Storage:**
+   - Define a PersistentVolumeClaim for data persistence.
+   - Create a Deployment for MySQL using the PVC and the secret for passwords.
+
+4. **Deploy WordPress:**
+   - Define a Deployment for WordPress using the ConfigMap and secret to get database details.
+
+5. **Create Services to Expose Each Application:**
+   - Allow communication between WordPress and MySQL and external access to the WordPress application.
+
+Let's construct the YAML manifest for each of these components:
+
+### Step 1: Create a Secret for MySQL Passwords
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: c2VjdXJlcGFzc3dvcmQ= # Base64-encoded value for "securepassword"
+  mysql-password: c3VwZXJzZWNyZXQ= # Base64-encoded value for "supersecret"
+```
+
+### Step 2: Create a ConfigMap for WordPress Configuration
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_USER: wordpress
+  WORDPRESS_DB_NAME: wordpress
+```
+
+### Step 3: Deploy MySQL with Persistent Storage
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: wordpress
+            - name: MYSQL_USER
+              value: wordpress
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+```
+
+### Step 4: Deploy WordPress
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: WORDPRESS_DB_HOST
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: WORDPRESS_DB_USER
+            - name: WORDPRESS_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: WORDPRESS_DB_NAME
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
+          ports:
+            - containerPort: 80
+```
+
+### Step 5: Create Services for MySQL and WordPress
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+This complete manifest deploys WordPress and MySQL in a Kubernetes cluster, securing the passwords with secrets and using a ConfigMap for WordPress configuration. A PersistentVolumeClaim ensures data persistence for MySQL. Services expose MySQL internally and WordPress externally.

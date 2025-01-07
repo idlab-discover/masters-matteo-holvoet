@@ -1,0 +1,165 @@
+Certainly! Here is the complete Kubernetes YAML manifest as a single file. Make sure to replace the placeholders for base64-encoded values with actual values before applying it.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: [base64-encoded-root-password]
+  mysql-user: [base64-encoded-wordpress-user]
+  mysql-password: [base64-encoded-wordpress-password]
+  mysql-database: [base64-encoded-wordpress-database]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: "mysql"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-root-password
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-user
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-password
+          - name: MYSQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-database
+        ports:
+          - containerPort: 3306
+        volumeMounts:
+          - name: mysql-persistent-storage
+            mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+          - name: WORDPRESS_DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: wordpress-config
+                key: WORDPRESS_DB_HOST
+          - name: WORDPRESS_DB_USER
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-user
+          - name: WORDPRESS_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-password
+          - name: WORDPRESS_DB_NAME
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-database
+        ports:
+          - containerPort: 80
+        volumeMounts:
+          - name: wordpress-persistent-storage
+            mountPath: /var/www/html
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  clusterIP: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+```
+
+Make sure to replace placeholders for `[base64-encoded-root-password]`, `[base64-encoded-wordpress-user]`, `[base64-encoded-wordpress-password]`, and `[base64-encoded-wordpress-database]` with actual base64-encoded values. For example, use `echo -n 'your-value' | base64` to encode each of your values.

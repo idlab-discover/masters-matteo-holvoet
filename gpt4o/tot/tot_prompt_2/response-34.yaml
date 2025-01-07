@@ -1,0 +1,99 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: cGFzc3dvcmQ=  # Base64 encoded string of 'password'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # Ensures the service is reachable via a DNS name
+```
+
+This Kubernetes YAML manifest includes:
+
+1. **WordPress Deployment and Service**: The deployment will manage the `wordpress` container, using the latest WordPress image. Environment variables are set to connect to the MySQL service. The corresponding LoadBalancer service exposes WordPress externally on port 80.
+
+2. **MySQL Deployment and Service**: The deployment runs the `mysql` container with MySQL 5.7. Environment variables include the root password sourced from a Kubernetes secret. The MySQL service is headless, with no `clusterIP`, to facilitate hostname resolution via DNS for the WordPress deployment.
+
+3. **Secret for MySQL Password**: This uses a Base64-encoded string for 'password', which you can customize.
+
+These components together set up a WordPress site backed by a MySQL database. Adjustments, such as resource requests/limits and custom configurations, may be applied according to specific needs.

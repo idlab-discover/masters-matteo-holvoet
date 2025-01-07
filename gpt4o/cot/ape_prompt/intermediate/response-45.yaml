@@ -1,0 +1,190 @@
+Deploying a WordPress website using Kubernetes requires several components, including Deployments, Services, and possibly Persistent Volumes. We'll break this down step-by-step, covering each necessary part of the manifest:
+
+### Step 1: Create a Secret for MySQL Password
+First, we create a Secret to store the MySQL root password securely.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-password>
+```
+
+Replace `<base64-encoded-password>` with the base64-encoded value of your MySQL root password. You can generate this using a command like `echo -n "yourpassword" | base64`.
+
+### Step 2: Persistent Volume and Persistent Volume Claim
+Define the Persistent Volume (PV) and Persistent Volume Claim (PVC) for both MySQL and WordPress to store data persistently.
+
+**MySQL PV and PVC:**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/data/mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+**WordPress PV and PVC:**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/data/wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Step 3: Deploy MySQL
+Create a Deployment and Service for MySQL.
+
+**MySQL Deployment:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+**MySQL Service:**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 4: Deploy WordPress
+Finally, create a Deployment and Service for WordPress.
+
+**WordPress Deployment:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+```
+
+**WordPress Service:**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+### Additional Steps
+1. Ensure your Kubernetes nodes have access to `hostPath` specified paths (e.g., `/mnt/data/mysql` and `/mnt/data/wordpress`).
+2. Replace `<base64-encoded-password>` in the Secret with your encoded password.
+3. Ensure the LoadBalancer service is supported if you're deploying in a cloud environment.
+
+The YAML manifest above should help you deploy WordPress with a MySQL backend in Kubernetes. Adjust the configurations, paths, and other parameters based on your specific requirements and infrastructure setup.

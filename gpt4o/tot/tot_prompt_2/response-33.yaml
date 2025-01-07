@@ -1,0 +1,96 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          value: wordpress-password
+        - name: MYSQL_ROOT_PASSWORD
+          value: root-password
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - protocol: TCP
+    port: 3306
+    targetPort: 3306
+  clusterIP: None
+```
+
+### Expert Reflections:
+
+**Expert 1**: Initially, we need to consider the WordPress and MySQL images and their configurations. We start by setting up the WordPress deployment first. The `env` fields are crucial; they establish a connection between WordPress and MySQL by providing the database host, user, and password. We create a service for WordPress with a LoadBalancer type for external access.
+
+**Expert 2**: That's a solid start, I like how you've set up the WordPress deployment. However, let's not forget that MySQL needs to be a StatefulSet if we want persistent storage, which can be enhanced later. But for simplicity, let's continue with the deployment. Also, using `clusterIP: None` on MySQL ensures it's accessible within the cluster as a headless service, allowing proper DNS resolution.
+
+**Expert 3**: Both great observations. The use of `env` variables effectively connects WordPress to MySQL. Later, we can enhance these manifests with persistent volumes for real-world applications. For now, using Kubernetes secrets for passwords could be another improvement to ensure better security practices. Good teamwork on refining these deployments.

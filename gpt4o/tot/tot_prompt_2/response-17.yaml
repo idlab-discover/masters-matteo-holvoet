@@ -1,0 +1,156 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-password
+              key: password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-password
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-password
+              key: password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-password
+  namespace: wordpress-mysql
+type: Opaque
+data:
+  password: cGFzc3dvcmQ=  # This is base64 encoded (e.g., "password")
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+```
+Here's the YAML manifest simulating the collaboration among Kubernetes experts:
+
+1. **Namespace**: Created a dedicated namespace `wordpress-mysql` for better isolation.
+2. **Deployment (WordPress)**: 
+   - Container named `wordpress` using the `wordpress:latest` image.
+   - Environment variables for database credentials are set, using a secret reference for the password.
+   - Ensures the WordPress application connects to MySQL via the service name `mysql`.
+
+3. **Deployment (MySQL)**:
+   - Container named `mysql` using the `mysql:5.7` image.
+   - Initializes database credentials through environment variables; password is also set via the secret.
+   - ClusterIP set to `None` in the service for MySQL to create a Headless Service, which is suitable for databases.
+
+4. **Secret**:
+   - Created an opaque secret to store the MySQL password safely, noting that it should be base64 encoded.
+
+5. **Services**:
+   - WordPress service is of type `LoadBalancer` to expose it externally. 
+   - MySQL service serves as a headless service.
+
+6. **PersistentVolumeClaims**:
+   - PVCs for `WordPress` and `MySQL` provide persistent storage, ensuring data isn't lost on pod rescheduling.
+
+These steps allow seamless deployment and communication between the WordPress and MySQL pods, adhering to best practices in Kubernetes config management.

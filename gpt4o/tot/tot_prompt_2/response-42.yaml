@@ -1,0 +1,102 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+            - name: MYSQL_DATABASE
+              value: wordpress
+          ports:
+            - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: bXlzcWxwYXNzd29yZA==
+```
+
+The above YAML manifest consists of two Deployments, two Services, and a Secret. These components work together to deploy a WordPress website with a MySQL database backend on Kubernetes.
+
+1. **WordPress Deployment and Service**:
+   - The WordPress Deployment creates a Pod with a container running the WordPress image. It requires an environment variable `WORDPRESS_DB_PASSWORD` to connect to the MySQL database.
+   - The WordPress Service is set as a LoadBalancer type, which allows it to be accessed externally on port 80.
+
+2. **MySQL Deployment and Service**:
+   - The MySQL Deployment creates a Pod with a container running the MySQL image. It also uses environment variables to set up the database name and the root password.
+   - The MySQL Service exposes port 3306 and has a `clusterIP: None` configuration, which makes it a headless service suitable for direct Pod-to-Pod communication.
+
+3. **Secret**:
+   - The Secret stores the MySQL password in a base64-encoded format ("bXlzcWxwYXNzd29yZA==" is the base64 encoding of the string "mysqlpassword").
+
+Feel free to adjust images, passwords, and environment variables to match your specific requirements.

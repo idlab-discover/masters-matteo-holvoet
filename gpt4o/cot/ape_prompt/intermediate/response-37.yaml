@@ -1,0 +1,184 @@
+To deploy a WordPress website using a MySQL database on Kubernetes, you'll need to create a couple of manifests: one for the MySQL database and another for the WordPress site. We'll do this in several steps, ensuring each component is correctly configured and follows best practices.
+
+### Step 1: Create a MySQL Deployment
+
+#### MySQL Configuration
+- **MySQL Root Password:** Set a root password for the database.
+- **Database Name:** Define the database to be used by WordPress.
+- **User and Password:** Create a user and password for WordPress to access MySQL.
+
+#### Create a Secret for MySQL Password
+Use Kubernetes secrets to store sensitive data such as passwords.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: <base64-encoded-password>
+```
+Encode your MySQL root password in base64 and replace `<base64-encoded-password>` with the encoded string.
+
+#### MySQL Deployment YAML
+Now create the deployment for MySQL.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+  clusterIP: None  # This allows for headless service.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wpuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### Persistent Volume and Claim for MySQL
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Step 2: Create a WordPress Deployment
+
+#### WordPress Deployment YAML
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_USER
+          value: wpuser
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+#### Persistent Volume and Claim for WordPress
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Conclusion
+
+Once you have these YAML manifests created, apply them using `kubectl apply -f filename.yaml` to deploy the MySQL and WordPress deployments together with the respective services and persistent volumes. Make sure your Kubernetes cluster supports LoadBalancer or use an alternative method if needed (like ingress) to expose the WordPress service.

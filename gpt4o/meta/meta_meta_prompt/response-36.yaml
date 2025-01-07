@@ -1,0 +1,272 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wp-site
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wp-site
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  clusterIP: None  # This makes the service headless
+  type: ClusterIP
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wp-site
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wp-site
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wp-site
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wp-site
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:5.8
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql.wp-site.svc.cluster.local
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: wordpress-persistent-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wp-site
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wp-site
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wp-site
+type: Opaque
+data:
+  password: bXlzcWwtcGFzc3dvcmQ=  # Base64 encoded 'mysql-password'
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mysql-access
+  namespace: wp-site
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wordpress
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+  namespace: wp-site
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: wordpress.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress
+                port:
+                  number: 80
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: wp-site
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:6.2
+          ports:
+            - containerPort: 6379
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: wp-site
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+  clusterIP: None
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wordpress-redis
+  namespace: wp-site
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wordpress
+      ports:
+        - protocol: TCP
+          port: 6379
+```

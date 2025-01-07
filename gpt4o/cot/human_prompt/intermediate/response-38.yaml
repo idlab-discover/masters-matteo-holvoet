@@ -1,0 +1,180 @@
+Deploying a WordPress website with a MySQL database on Kubernetes involves several components, including deployments, services, and persistent volume claims. Here’s a step-by-step approach to create the required YAML manifest files for both WordPress and MySQL.
+
+### Step 1: Create a Namespace
+First, let's create a namespace to organize our resources.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+```
+
+### Step 2: Create Persistent Volumes and Persistent Volume Claims
+WordPress and MySQL both need storage for data persistence.
+
+#### Persistent Volume and Claim for MySQL
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+#### Persistent Volume and Claim for WordPress
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 3: Deploy MySQL
+Create a Deployment and a Service for MySQL.
+
+#### MySQL Deployment
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wp_user
+        - name: MYSQL_PASSWORD
+          value: wp_pass
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### MySQL Service
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 4: Deploy WordPress
+Create a Deployment and a Service for WordPress.
+
+#### WordPress Deployment
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_USER
+          value: wp_user
+        - name: WORDPRESS_DB_PASSWORD
+          value: wp_pass
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+#### WordPress Service
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Step 5: Apply the YAML Manifests
+After creating the YAML files, use the `kubectl apply -f` command to deploy them on your Kubernetes cluster.
+
+Here's the sequence to apply these manifests:
+
+```bash
+kubectl apply -f namespace.yaml
+kubectl apply -f mysql-pvc.yaml
+kubectl apply -f wordpress-pvc.yaml
+kubectl apply -f mysql-deployment.yaml
+kubectl apply -f mysql-service.yaml
+kubectl apply -f wordpress-deployment.yaml
+kubectl apply -f wordpress-service.yaml
+```
+
+This setup provides a basic WordPress site backed by a MySQL database, all running on Kubernetes. Adjust the namespaces, resource requests/limits, and credentials according to your needs.

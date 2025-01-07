@@ -1,0 +1,138 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-namespace
+data:
+  WORDPRESS_DB_HOST: wordpress-mysql
+  WORDPRESS_DB_USER: wordpress
+  WORDPRESS_DB_NAME: wordpress
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-secrets
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  WORDPRESS_DB_PASSWORD: c3VwZXJzZWNyZXQ= # base64 encoded value
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: wordpress-config
+        - secretRef:
+            name: wordpress-secrets
+      nodeSelector:
+        tier: web
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wordpress-mysql
+  namespace: wordpress-namespace
+spec:
+  serviceName: "mysql"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: WORDPRESS_DB_PASSWORD
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql
+  namespace: wordpress-namespace
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress-mysql
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+```

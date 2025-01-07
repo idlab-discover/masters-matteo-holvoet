@@ -1,0 +1,174 @@
+Creating a Kubernetes manifest for deploying a WordPress website with a MySQL backend involves several components, including Deployments, Services, ConfigMaps, and Secrets. Let's detail each step to formulate a complete YAML manifest:
+
+### Step 1: Create a Secret for MySQL
+
+To securely handle database credentials, we’ll use a Kubernetes Secret:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ= # This is 'password' encoded in base64
+  mysql-database: d29yZHByZXNz # 'wordpress' in base64
+  mysql-user: d3B1c2Vy # 'wpuser' in base64
+  mysql-password: d3BwYXNzd29yZA== # 'wppassword' in base64
+```
+
+### Step 2: Define Persistent Volume Claims
+
+We define PersistentVolumeClaims (PVCs) for MySQL data storage:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Step 3: Create a Deployment for MySQL
+
+We set up a Deployment that uses the PVC and the Secret for MySQL:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+### Step 4: Define a MySQL Service
+
+Expose MySQL to the WordPress deployment:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 5: Create a Deployment for WordPress
+
+Set up WordPress connecting to MySQL:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+```
+
+### Step 6: Define a WordPress Service
+
+Create a WordPress service to expose it:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+```
+
+### Summary
+
+This YAML manifest contains Secret for MySQL credentials, a PVC for MySQL persistent storage, MySQL and WordPress Deployments with appropriate environment variables, and Services to expose both MySQL and WordPress. You just need to apply these YAML files using `kubectl apply -f <file-name>.yaml` for each step. This setup ensures separation of concerns, secure management of sensitive data, and persistence for the database backend.

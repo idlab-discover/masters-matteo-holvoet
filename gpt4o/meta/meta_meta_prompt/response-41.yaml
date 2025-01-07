@@ -1,0 +1,195 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-system
+type: Opaque
+data:
+  password: <base64-encoded-password>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - image: wordpress:latest
+          name: wordpress
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          volumeMounts:
+            - name: wordpress-pv-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-pv-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - image: mysql:5.7
+          name: mysql
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          volumeMounts:
+            - name: mysql-pv-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-pv-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: wordpress-system
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mysql-backup
+              image: mysql:5.7
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-pass
+                      key: password
+              args:
+                - "/bin/sh"
+                - "-c"
+                - "mysqldump -u root --password=$MYSQL_ROOT_PASSWORD --databases wordpress > /backup/backup.sql"
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: mysql-backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-backup-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Design Choices Justification
+
+1. **High Availability**: Both WordPress and MySQL deployments are configured with replicas to ensure availability. The use of a LoadBalancer service for WordPress helps distribute traffic effectively.
+
+2. **Security**: Secrets are used for storing sensitive data like database passwords, ensuring they are not exposed in plaintext.
+
+3. **Scalable Storage**: Persistent Volume Claims (PVCs) are chosen to provide reliable storage. WordPress and MySQL each have their PVCs to ensure that data persists across pod restarts and potential failures.
+
+4. **Automated Backups**: A CronJob is utilized to automate database backups. This approach ensures data resiliency and simplifies recovery processes.
+
+5. **Version Updates**: WordPress images are tagged with `latest` to facilitate easy updates. For controlled updates, deploying a newer version alongside old ones and directing traffic accordingly can be a more conservative strategy.
+
+6. **Resource Management & Scalability**: The setup supports horizontal scaling of WordPress and MySQL pods. Persistent storage solutions are also designed to scale as needed.
+
+7. **Security Implications**: Regular backups help mitigate data loss due to breaches. Furthermore, segmenting applications into namespaces restricts access and reduces risk exposure.
+
+This architecture follows modern DevOps and system resilience practices by promoting automation, security, and scalability while maintaining ease of management and recovery.

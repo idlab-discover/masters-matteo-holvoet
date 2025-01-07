@@ -1,0 +1,254 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-site
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: wordpress-site
+  name: wordpress
+spec:
+  replicas: 3  # Horizontal scaling for high availability
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.8
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: password
+        ports:
+        - containerPort: 80
+      securityContext:
+        runAsUser: 1000  # non-root user
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: wordpress-site
+  name: mysql
+spec:
+  replicas: 1  # Single replica for master; consider a managed DB for true HA
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      securityContext:
+        runAsUser: 1000  # non-root user
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: wordpress-site
+  name: wordpress
+spec:
+  type: LoadBalancer  # For external access
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: wordpress-site
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: wordpress-site
+  name: mysql-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: wordpress-site
+  name: mysql-secrets
+type: Opaque
+data:
+  username: dXNlcm5hbWU=  # base64 encoded 'username'
+  password: cGFzc3dvcmQ=  # base64 encoded 'password'
+  root-password: cm9vdC1wYXNzd29yZA==  # base64 encoded 'root-password'
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  namespace: wordpress-site
+  name: wordpress-allow-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  namespace: wordpress-site
+  name: mysql-backup
+spec:
+  schedule: "0 0 * * *"  # Daily backups
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: mysql-backup
+            image: mysql:5.7
+            command: ["sh", "-c", "mysqldump -h=mysql -u $MYSQL_USER -p$MYSQL_PASSWORD wordpress > /backup/db_backup.sql"]
+            env:
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: username
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: password
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: mysql-backup-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: wordpress-site
+  name: mysql-backup-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: wordpress-site
+  name: logging-config
+data:
+  log.properties: |
+    [Output]
+    LogLevel=INFO
+```
+
+### Discussion
+
+1. **Resource Allocation:** The resource requests and limits are balanced to ensure performance while optimizing costs. It's crucial to minimize excessive resource allocation to reduce cloud expenses while ensuring stable performance under load.
+
+2. **Scaling Strategy:** WordPress is set up to scale horizontally as demand increases, improving both redundancy and availability. MySQL remains a single replica to avoid complexities with data consistency; however, consider a managed database solution for true scalability needs.
+
+3. **Data Persistence:** Persistent volumes manage the MySQL data's survival across restarts and possible node failures, minimizing data loss risks.
+
+4. **Security Measures:** Utilize Secrets for sensitive information such as user credentials. Containers are not running as root to minimize security risks.
+
+5. **Backup and Recovery:** A daily backup CronJob is set up for the MySQL database, ensuring that recent data is available for recovery, ensuring data integrity and minimal downtime.
+
+6. **Network Configuration:** Networking best practices are enforced using NetworkPolicies that only allow necessary traffic between WordPress and MySQL.
+
+7. **Monitoring and Logging:** Though not explicitly defined, it’s recommended to integrate with logging and monitoring tools like Prometheus, Grafana, or ELK Stack for comprehensive insights and rapid issue resolution.
+
+8. **Environmental Considerations:** ConfigMaps and secrets should be parameterized to differentiate between development, testing, and production environments. Implementing Helm charts or Kustomize can aid in managing variations across environments.
+
+### Potential Trade-offs
+- **Resource Utilization Without Headroom:** Setting tight resource limits might save costs, but could also restrict peak-time performance. Over-allocating ensures headroom but increases operational costs.
+- **MySQL Scaling Strategy:** Using a managed database service or introducing read replicas could offer more scalability at the expense of increased complexity and cost.
+- **Backup Storage and Frequency:** The current backup strategy balances between storage costs and data safety, though increasing frequency could offer quicker recovery at higher storage costs.
+
+This setup provides a robust, secure, and scalable solution, with adjustments and optimizations possible based on specific needs and environment dynamics.

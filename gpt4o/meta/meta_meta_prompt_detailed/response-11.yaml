@@ -1,0 +1,153 @@
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy: 
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: c2VjcmV0
+  mysql-password: d29yZHByZXNz
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+```
+
+### Narrative and Decision Making:
+
+1. **MySQL Deployment and Storage**: The MySQL deployment utilizes a `PersistentVolumeClaim` to ensure data persistence, crucial for any database requiring durability. The `ReadWriteOnce` access mode is appropriate here because it allows mounting the volume as read-write by a single node, essential for traditional SQL databases' consistency. The `standard` storage class is selected for its balance between performance and cost-effectiveness.
+
+2. **WordPress and MySQL Deployments**: Both are separately deployed as Deployments. This allows independent scaling based on demand. Rolling updates ensure minimal downtime, critical for production environments.
+
+3. **Secrets and ConfigMaps**: Sensitive data like user passwords are managed via Kubernetes Secrets. This ensures secure handling and reveals best practices for sensitive information. ConfigMap could further manage non-sensitive configuration like the WordPress config values, allowing for changes without redeployment.
+
+4. **Services**: The WordPress Service is exposed using a `LoadBalancer`, making it accessible externally, suitable for a web application. The MySQL Service uses `ClusterIP` for internal communication, maintaining security and efficiency within the cluster.
+
+5. **Scalability and Fault Tolerance**: `HorizontalPodAutoscaler` is set up to manage scaling of the WordPress application, triggered by CPU utilization; this enhances both cost-efficiency and performance during varying loads.
+
+These decisions optimize the deployment for typical production scenarios, keeping in mind performance, security, stability, and scalability.

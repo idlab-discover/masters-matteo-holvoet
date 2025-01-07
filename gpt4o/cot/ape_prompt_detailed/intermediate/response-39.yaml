@@ -1,0 +1,166 @@
+To create a complete Kubernetes YAML manifest for deploying a WordPress website with a MySQL database, we'll take the following steps to ensure each component is appropriately configured. 
+
+### Step 1: Create a Secret for MySQL Password
+
+We will store the MySQL password in a Kubernetes Secret to keep it secure. 
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ= # Base64 encoded password 'password'
+```
+
+### Step 2: Create a PersistentVolumeClaim for MySQL
+
+This allows MySQL to have persistent storage to retain data even if the Pod is restarted.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Step 3: Create a ConfigMap for WordPress
+
+A ConfigMap to store WordPress configuration options (e.g., database host).
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql:3306
+  WORDPRESS_DB_NAME: wordpress
+  WORDPRESS_DB_USER: root
+```
+
+### Step 4: Create the MySQL Deployment
+
+MySQL deployment using the secret for the password and the PVC for persistence.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+### Step 5: Create the WordPress Deployment
+
+WordPress deployment using the configurations from the ConfigMap and Secret.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_USER
+```
+
+### Step 6: Create Services for MySQL and WordPress
+
+These services will expose MySQL and WordPress applications within the cluster.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer  # or NodePort depending on your environment
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Summary
+
+The above manifest sets up the complete configuration for running a WordPress site backed by MySQL on Kubernetes. It utilizes Secrets for sensitive information (MySQL password), ConfigMaps for configuration settings, and PVCs for persistent data storage. Adjust the `LoadBalancer` to `NodePort` in the WordPress Service if using a setup without external load balancing. Additionally, make necessary adjustments to fit your specific Kubernetes environment (e.g., storage classes, load balancer setup).

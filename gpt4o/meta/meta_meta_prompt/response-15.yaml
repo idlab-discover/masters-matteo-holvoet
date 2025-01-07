@@ -1,0 +1,227 @@
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        imagePullPolicy: Always
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: wordpress-pv-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-pv-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: Always
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: rootpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: mysql-pv-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-pv-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  rootpassword: c2VjdXJlcGFzc3dvcmQ=  # base64 encoded password
+  username: dXNlcg==
+  password: cGFzc3dvcmQ=
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+  - host: example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress-service
+            port:
+              number: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  labels:
+    app: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 50
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+```
+
+### Implementation Details
+
+1. **Scalability**: The WordPress deployment scales from 1 to 3 replicas with a Horizontal Pod Autoscaler (HPA) to ensure seamless scaling based on CPU utilization.
+2. **Data Persistence and Backup**: Use PersistentVolumeClaims (PVCs) for WordPress and MySQL with a storage class that supports dynamic provisioning. Regular backups can be scheduled separately with tools like Velero.
+3. **Network Security and Access Control**: Network policies restrict database access to only the WordPress pods, enhancing security.
+4. **High Availability**: The setup supports high availability by providing multiple WordPress replicas. MySQL replication is not configured here but could be set up using a StatefulSet or an external managed DB service.
+5. **Environment Considerations**: Tuning replicas and HPA settings can adjust resource allocation in different environments (development might use lower resource configurations).
+6. **Resource Optimization**: Set resource requests and limits to ensure efficient CPU and memory usage, reducing over-provisioning and unexpected resource exhaustion.
+
+This solution offers a scalable and secure deployment while laying the grounds for data persistence, availability, and environment flexibility. However, utilizing managed database services or additional tools for specific functionalities (like MySQL failover) can further expand this architecture.

@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress_user
+        - name: WORDPRESS_DB_PASSWORD
+          value: your_wordpress_db_password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress_db
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mysql
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_DATABASE
+          value: wordpress_db
+        - name: MYSQL_USER
+          value: wordpress_user
+        - name: MYSQL_PASSWORD
+          value: your_wordpress_db_password
+        - name: MYSQL_ROOT_PASSWORD
+          value: your_root_db_password
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: mysql

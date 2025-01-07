@@ -1,0 +1,184 @@
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ= # Base64 encoded password
+  mysql-wordpress-password: d29yZHByZXNz # Base64 encoded password
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_NAME: wordpressdb
+  WORDPRESS_DB_USER: wordpressuser
+  WORDPRESS_TABLE_PREFIX: wp_
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-wordpress-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-apache
+        resources:
+          requests:
+            memory: "500Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-wordpress-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+```
+
+### Design Choices Explanation
+
+**1. MySQL Deployment and PersistentVolumeClaim**
+- **Storage Classes**: 'standard' storage class used for persistent storage, offering a balance between cost and performance.
+- **Data Persistence**: Ensures database persistence with a `PersistentVolumeClaim`.
+
+**2. WordPress Deployment**
+- **Replicas**: Set to 3 for high availability.
+- **Resource Allocation**: Optimizing with limits/requests ensures stability under load.
+
+**3. Secrets and ConfigMaps**
+- **Secrets**: Used for sensitive data (passwords), which are base64-encoded.
+- **ConfigMaps**: Store environmental variables for dynamic configuration management.
+
+**4. Services and Network**
+- `ClusterIP: None` for MySQL ensures connection straight across all replicas.
+- **LoadBalancer** type for WordPress exposes the application to external traffic.
+
+### Security and Performance
+- **Resource Requests/Limits**: Prevents overload and ensures fair resource distribution.
+- **Environmental Variables with Secrets**: Enhances security by avoiding direct plaintext configurations.
+
+### Reflection
+The balance between simplicity and complexity is crucial to ensure maintainable and robust deployments. These design choices allow rapid scaling under increased load while maintaining a secure environment. Using advanced Kubernetes features like PersistentVolumeClaims and ConfigMaps efficiently enhances resilience and flexibility, crucial for situations like system failures or resource spikes.

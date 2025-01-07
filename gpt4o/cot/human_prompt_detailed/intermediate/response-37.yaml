@@ -1,0 +1,180 @@
+Deploying a WordPress website with a MySQL database in Kubernetes requires several components, including Deployments, Services, PersistentVolumeClaims, ConfigMaps, and Secrets. Let's break down the steps to create the YAML manifest.
+
+### Step 1: Create ConfigMap for WordPress
+
+First, we need a ConfigMap for storing non-sensitive configuration data for WordPress.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql
+```
+
+### Step 2: Create Secrets for MySQL
+
+We'll use Secrets to store sensitive data such as passwords.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <base64_encoded_root_password>
+  mysql-password: <base64_encoded_user_password>
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-secret
+type: Opaque
+data:
+  wordpress-db-password: <base64_encoded_wordpress_password>
+```
+
+### Step 3: Create PersistentVolumeClaims for MySQL
+
+PersistentVolumeClaims (PVCs) are needed to ensure data persistence for MySQL.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 4: Create Deployment for MySQL
+
+We need a Deployment to run the MySQL database.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+### Step 5: Create Deployment for WordPress
+
+Now, we define the Deployment for the WordPress application.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: wordpress-db-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+```
+
+### Step 6: Create Services for MySQL and WordPress
+
+Finally, we provide connectivity to both MySQL and WordPress by exposing them as Services.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None # Headless service for stable DNS.
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Review and Apply
+After defining all these YAML files, make sure your Kubernetes cluster has enough resources and apply them using `kubectl apply -f <filename>.yaml`. This setup includes the basic components and configuration necessary to run a WordPress site with MySQL on Kubernetes.
+
+Ensure that your base64 encoded passwords in the Secret section are correctly generated and securely stored. These YAML snippets provide a starting point, and you may need to adjust them based on specific clusters or additional requirements.

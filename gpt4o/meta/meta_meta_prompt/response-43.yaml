@@ -1,0 +1,227 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: wordpress
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: "/data/mysql"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+  namespace: wordpress
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: "/data/wordpress"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-persistent-storage
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: rootpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress
+type: Opaque
+data:
+  username: d29yZHByZXNz # This is 'wordpress' encoded in base64
+  password: c2VjdXJlcGFzcw== # This is 'securepass' encoded in base64
+  rootpassword: cm9vdHBhc3M= # This is 'rootpass' encoded in base64
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: backup-mysql
+  namespace: wordpress
+spec:
+  schedule: "0 2 * * *" # Every day at 2am
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: mysql:5.7
+            env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: rootpassword
+            command: ["sh", "-c", "mysqldump -u root -p$MYSQL_ROOT_PASSWORD wordpress > /backup/backup.sql"]
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+          restartPolicy: OnFailure
+          volumes:
+          - name: backup-storage
+            hostPath:
+              path: "/data/backup"
+```
+
+### Analysis & Proposals for Challenges
+
+**Challenges:**
+1. **High Availability:** Ensuring the MySQL database is highly available is a challenge since the deployment of a single replica presents a point of failure.
+   
+2. **Data Persistence:** Proper data backup and restoration strategies must be in place to recover in case of failures.
+
+3. **Security:** Ensuring that deployments and secret management are secure against breaches.
+
+**Solutions & Technologies:**
+- **Database Replication:** Utilize MySQL clustering or the use of a managed database service for higher availability and failover capabilities.
+- **Backup Strategy:** The CronJob implementation above ensures daily backups, but consider using external storage solutions like AWS S3 for backup storage.
+- **Security Enhancements:** Implement Pod Security Policies and Network Policies to ensure least privilege access and secure communication.
+- **Performance Optimization:** Use auto-scaling for the WordPress deployment based on load, and optimize MySQL configuration for better performance under load.
+- **Monitoring & Alerts:** Implement logging and monitoring solutions like Prometheus and Grafana for real-time insights and alerts.
+- **Emerging Practices:**
+  - **Zero-Trust Networking:** Employ Kubernetes Network Policies to enforce granular network segmentation.
+  - **Service Meshes** such as Istio for traffic management, security, and observability.
+  - **Serverless Architecture:** For non-persistent parts or functions within the WordPress application to handle dynamic scaling and cost management efficiently.

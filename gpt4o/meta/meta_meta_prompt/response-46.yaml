@@ -1,0 +1,184 @@
+```yaml
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  labels:
+    app: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-service
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+      restartPolicy: Always
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      restartPolicy: Always
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+# Persistent Volume for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wordpress-to-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+    ports:
+    - protocol: TCP
+      port: 3306
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+    ports:
+    - protocol: TCP
+      port: 80
+
+---
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  labels:
+    app: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: wordpress
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  labels:
+    app: mysql
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+  clusterIP: None
+  selector:
+    app: mysql
+
+---
+# MySQL Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: {{ .Values.mysqlRootPassword | b64encode }}
+  mysql-password: {{ .Values.mysqlPassword | b64encode }}
+```
+
+This YAML configuration provides a typical setup for a WordPress application with a MySQL database backend in a Kubernetes cluster. It uses Deployments for high availability and ensures communication security with Network Policies. Secrets are used to manage sensitive data like passwords, and Persistent Volumes are configured to ensure data persistence. Resource management is addressed through requests and limits, balancing cost-efficiency and performance. The configuration caters to potential issues in multi-node clusters, including load balancing and node failures, through the deployment of multiple replicas and a LoadBalancer service type.

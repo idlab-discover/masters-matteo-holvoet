@@ -1,0 +1,206 @@
+```yaml
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+
+---
+# Persistent volumes for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: wordpress
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+
+---
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql
+                  key: mysql-root-password
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+
+---
+# Secret for MySQL Password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql
+  namespace: wordpress
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ=  # 'password' in Base64
+
+---
+# Horizontal Pod Autoscaler for WordPress
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+---
+# Backup CronJob for MySQL Database
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: wordpress
+spec:
+  schedule: "0 2 * * *"  # At 2am daily
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mysql-backup
+              image: mysql:5.7
+              command:
+                - /bin/sh
+                - -c
+                - "mysqldump -h mysql -u root -p$(MYSQL_ROOT_PASSWORD) wordpress > /backup/$(date +\%F).sql"
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql
+                      key: mysql-root-password
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /backup
+          volumes:
+            - name: backup-volume
+              persistentVolumeClaim:
+                claimName: mysql-pv-claim
+          restartPolicy: OnFailure
+```

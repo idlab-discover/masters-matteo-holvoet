@@ -1,0 +1,184 @@
+To deploy a WordPress website using a MySQL database on Kubernetes, you need to create multiple resources that work together. Here's a step-by-step breakdown and the corresponding YAML manifest:
+
+1. **Create a Persistent Volume**: This is used to store the data for MySQL and WordPress to ensure data persists across pod restarts.
+
+2. **Create a Persistent Volume Claim**: This requests storage from the Persistent Volume for both MySQL and WordPress.
+
+3. **Create a MySQL Secret**: Secrets store sensitive information like database passwords.
+
+4. **Deploy MySQL**: Deploy MySQL using a StatefulSet to handle database data persistence.
+
+5. **Deploy WordPress**: Deploy WordPress using a Deployment.
+
+6. **Expose Services**: Create Services to expose MySQL internally and WordPress externally.
+
+### Full YAML Manifest
+
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  hostPath:
+    path: /mnt/data/mysql
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 2Gi
+  hostPath:
+    path: /mnt/data/wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: cGFzc3dvcmQ= # base64 encoded "password"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: "mysql"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Key Points:
+
+- **Persistent Volumes and Claims**: These ensure data persistence beyond the lifecycle of any single pod.
+
+- **StatefulSet for MySQL**: StatefulSets manage stateful applications and maintain unique identities for pods.
+
+- **Secrets**: Keep sensitive data (like passwords) secure.
+
+- **ClusterIP Service for MySQL**: MySQL is only exposed within the cluster.
+
+- **LoadBalancer Service for WordPress**: Exposes WordPress to the internet via an external load balancer.
+
+The hostPath defined in Persistent Volumes is for illustrative purposes; in cloud environments, you should typically rely on dynamic provisioning with cloud-specific storage classes. Adjustments are necessary based on your environment.

@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: wordpress
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: wordpress
+  name: mysql-pv-claim
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: wordpress
+    tier: mysql
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  containers:
+  - env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: rootpassword
+    - name: MYSQL_DATABASE
+      value: wordpress
+    - name: MYSQL_USER
+      value: wordpressuser
+    - name: MYSQL_PASSWORD
+      value: password
+    image: mysql:5.7
+    name: mysql
+    ports:
+    - containerPort: 3306
+      name: mysql
+    volumeMounts:
+    - mountPath: /var/lib/mysql
+      name: mysql-persistent-storage
+  volumes:
+  - name: mysql-persistent-storage
+    persistentVolumeClaim:
+      claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress-pv-claim
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: wordpress
+    tier: frontend
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  containers:
+  - env:
+    - name: WORDPRESS_DB_HOST
+      value: mysql.wordpress-mysql.svc.cluster.local
+    - name: WORDPRESS_DB_USER
+      value: wordpressuser
+    - name: WORDPRESS_DB_PASSWORD
+      value: password
+    - name: WORDPRESS_DB_NAME
+      value: wordpress
+    image: wordpress:latest
+    name: wordpress
+    ports:
+    - containerPort: 80
+      name: wordpress
+    volumeMounts:
+    - mountPath: /var/www/html
+      name: wordpress-persistent-storage
+  volumes:
+  - name: wordpress-persistent-storage
+    persistentVolumeClaim:
+      claimName: wordpress-pv-claim

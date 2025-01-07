@@ -1,0 +1,232 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-mysql
+type: Opaque
+data:
+  mysql-root-password: cGFzc3dvcmQ= # base64 encoded 'password'
+  mysql-database: d29yZHByZXNz # base64 encoded 'wordpress'
+  mysql-user: dXNlcm5hbWU= # base64 encoded 'username'
+  mysql-password: cGFzc3dvcmQxMjM= # base64 encoded 'password123'
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-mysql
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_USER: username
+  WORDPRESS_DB_PASSWORD: password123
+  WORDPRESS_DB_NAME: wordpress
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: wordpress-config
+        - secretRef:
+            name: mysql-secret
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv-volume
+  namespace: wordpress-mysql
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  # Adjust the storage class as per your storage provider
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/mysql
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-mysql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-mysql
+spec:
+  type: LoadBalancer
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-mysql
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: wordpress-pdb
+  namespace: wordpress-mysql
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: wordpress
+
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: mysql-pdb
+  namespace: wordpress-mysql
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mysql
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-mysql
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+  namespace: wordpress-mysql
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mysql
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
+```
+
+**Rationale for Design Choices:**
+- **Namespace Segmentation**: Offers isolation and organizational structuring.
+- **Secrets and ConfigMaps**: Secure sensitive data and configuration, ensuring flexibility and security.
+- **Deployments**: Separate for WordPress and MySQL for scaling independently.
+- **Persistent Storage**: Ensures data persistence using PVCs.
+- **Services**: LoadBalancer for WordPress to handle external traffic, ClusterIP for MySQL ensures internal service discovery.
+- **HPA and PDB**: Autoscaling and disruption budgets improve availability and resilience.
+- **Security and Compliance**: Secrets, ConfigMaps, and RBAC (not shown in YAML but assumed) enhance security in Kubernetes.

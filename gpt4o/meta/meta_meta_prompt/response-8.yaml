@@ -1,0 +1,305 @@
+```yaml
+# Namespace definition for the WordPress application
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+  annotations:
+    description: "Dedicated namespace for the WordPress application deployment"
+
+---
+# Persistent Volume Claim for WordPress data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress
+  annotations:
+    description: "Persistent Volume for WordPress files ensuring data persistence"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi # Adjust as needed for your data volume
+
+---
+# Persistent Volume Claim for MySQL database
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress
+  annotations:
+    description: "Persistent Volume for MySQL database ensuring data persistence"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi # Adjust as needed for database size
+
+---
+# MySQL Secret to hold sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress
+  annotations:
+    description: "Secret holding sensitive MySQL credentials"
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-root-password>
+  mysql-user: <base64-encoded-username>
+  mysql-password: <base64-encoded-password>
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress
+  labels:
+    app: mysql
+spec:
+  replicas: 3 # High availability setup with replica sets
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7 # Secure version of MySQL
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: wordpress
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 3 # High availability setup with replica sets
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:php7.4-apache # Secure version of WordPress
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql:3306
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-user
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
+          volumeMounts:
+            - name: wordpress-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+
+---
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+  annotations:
+    description: "Service to expose WordPress application"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress
+  annotations:
+    description: "Service for the MySQL database"
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+
+---
+# Network Policy to restrict traffic to MySQL from only WordPress pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-restrict
+  namespace: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wordpress
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+# Resource Quotas
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: wordpress-quota
+  namespace: wordpress
+  annotations:
+    description: "Resource allocation and limits for cost and performance optimization"
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+
+---
+# Horizontal Pod Autoscaler for WordPress
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# Horizontal Pod Autoscaler for MySQL
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+  namespace: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mysql
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# ConfigMap for WordPress configuration (optional if specific settings are required)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress
+  annotations:
+    description: "Configuration overrides for WordPress deployment"
+data:
+  MAILGUN_API_KEY: "key-example1234567890"
+  CONTACT_EMAIL: "admin@example.com"
+
+---
+# Pod Disruption Budget for WordPress
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wordpress-pdb
+  namespace: wordpress
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: wordpress
+
+---
+# Prometheus Scrape Configuration (requires Prometheus setup, annotations shown for example purposes)
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: wordpress
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '80'
+    prometheus.io/path: '/metrics'
+
+```

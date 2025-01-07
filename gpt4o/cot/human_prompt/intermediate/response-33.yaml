@@ -1,0 +1,216 @@
+To deploy a WordPress website with a MySQL backend in Kubernetes, we will create a series of Kubernetes YAML manifests. These manifests will define a PersistentVolume, PersistentVolumeClaim, Secret, Service, and Deployment for both WordPress and MySQL. We'll break down the process step by step.
+
+### Step 1: Create PersistentVolumes and PersistentVolumeClaims
+
+First, we need persistent storage for MySQL and optionally WordPress.
+
+#### `mysql-pv.yaml`
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/mnt/data" # Adjust path as needed
+```
+
+#### `mysql-pvc.yaml`
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 2: Create a Secret for MySQL Credentials
+
+#### `mysql-secret.yaml`
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-root-password: <BASE64_ENCODED_PASSWORD>
+  mysql-user: <BASE64_ENCODED_USERNAME>
+  mysql-password: <BASE64_ENCODED_PASSWORD>
+  mysql-database: <BASE64_ENCODED_DATABASE_NAME>
+```
+
+(Replace `BASE64_ENCODED_*` placeholders with actual base64-encoded values for password, user, database.)
+
+### Step 3: Create MySQL Deployment and Service
+
+#### `mysql-deployment.yaml`
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+#### `mysql-service.yaml`
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 4: Create WordPress Deployment and Service
+
+#### `wordpress-deployment.yaml`
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+```
+
+#### `wordpress-service.yaml`
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+```
+
+### Deployment Instructions
+
+1. **Apply PersistentVolume and PersistentVolumeClaim:**
+
+   ```bash
+   kubectl apply -f mysql-pv.yaml
+   kubectl apply -f mysql-pvc.yaml
+   ```
+
+2. **Create the Secret:**
+
+   ```bash
+   kubectl apply -f mysql-secret.yaml
+   ```
+
+3. **Deploy MySQL:**
+
+   ```bash
+   kubectl apply -f mysql-deployment.yaml
+   kubectl apply -f mysql-service.yaml
+   ```
+
+4. **Deploy WordPress:**
+
+   ```bash
+   kubectl apply -f wordpress-deployment.yaml
+   kubectl apply -f wordpress-service.yaml
+   ```
+
+5. **Monitor the pods and services:**
+
+   ```bash
+   kubectl get pods
+   kubectl get services
+   ```
+
+This setup provides a basic WordPress site with a MySQL backend. You can adjust configurations as needed, such as resource requests or scaling options.

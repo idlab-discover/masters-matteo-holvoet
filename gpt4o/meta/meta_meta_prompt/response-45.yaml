@@ -1,0 +1,148 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      securityContext:
+        fsGroup: 1001
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress
+type: Opaque
+data:
+  mysql-root-password: dXNlcgphZG1pbg== # base64 encoded 'rootpass'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.wordpress.svc.cluster.local:3306
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Architecture Choices Explained:
+
+- **Namespace:** A separate namespace is used to isolate the WordPress and MySQL resources for organizational and security purposes.
+
+- **Data Persistence:** A PersistentVolumeClaim (PVC) is allocated for MySQL data persistence to ensure data remains intact across pod restarts.
+
+- **Redundancy and High Availability:** 
+  - MySQL is deployed as a single instance with a persistent storage to ensure state, while WordPress is deployed with 3 replicas for load balancing and high availability.
+  - The WordPress service is of type `LoadBalancer`, which allows easy scaling and access from external clients.
+
+- **Secure Communication:** Secrets are used to manage database credentials securely, ensuring that passwords are not hardcoded into the deployment files. Services within the namespace ensure secure internal communication.
+
+- **Failure Scenarios:** 
+  - MySQL deployment uses a PVC, so if the MySQL pod fails, the data is retained.
+  - WordPress pods are load-balanced, so if one pod goes down, the service remains available.
+
+- **Performance Optimization:** Horizontal scaling of WordPress pods can be achieved automatically with an HPA (Horizontal Pod Autoscaler) based on CPU/memory metrics to handle varying traffic.
+
+- **CI/CD Pipeline Proposal:** Utilize tools like Jenkins, Argo CD, or Flux to set up a continuous integration and delivery pipeline. Use Helm charts for application deployments to ensure versioned and rollback-capable updates.
+
+- **Adapting for Future Growth:**
+  - Implement a managed MySQL instance for better scalability at the database layer.
+  - Transition to microservices architecture as the applications grow in complexity.
+  - Use cloud-native solutions like Kubernetes Engine's autoscaling features for sustained growth and technological advancements.
+```

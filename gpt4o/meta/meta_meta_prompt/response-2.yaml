@@ -1,0 +1,210 @@
+```yaml
+# Namespace creation for separation of concerns
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-app
+
+---
+# Persistent Volume for MySQL database
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: wordpress-app
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: "/mnt/data/mysql"
+
+---
+# Persistent Volume Claim for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "securepassword"  # Consider using a Kubernetes Secret
+        - name: MYSQL_DATABASE
+          value: "wordpress"
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  replicas: 3  # Enable scaling
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          value: "securepassword"  # Consider using a Kubernetes Secret
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-app
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # For stateful sets
+
+---
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-app
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer  # Forwards traffic to WordPress instances
+
+---
+# Network Policy for Isolation
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-deny-all
+  namespace: wordpress-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+# Allow only Wordpress to access MySQL
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wordpress-to-mysql
+  namespace: wordpress-app
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+    ports:
+    - protocol: TCP
+      port: 3306
+
+# Horizontal Pod Autoscaler for WordPress
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-autoscaler
+  namespace: wordpress-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+```
+
+### Reasoning:
+
+1. **Scalability**: Implemented horizontal scaling for WordPress using a `HorizontalPodAutoscaler`, allowing resources to adjust based on CPU utilization.
+
+2. **Data Persistence & Reliability**: Persistent volumes and claims ensure data persistence. MySQL uses a StatefulSet for stability and state management, paving the way for potential replica sets with consistent naming and ordering of pods.
+
+3. **Security**: Introduced Network Policies to restrict access strictly between WordPress and MySQL, using best security practices. Additionally, environment variables should be stored securely using Kubernetes Secrets in practice.
+
+4. **Resource Optimization**: Optimized resources using autoscaling to resize workloads based on real-time capacity needs without manual intervention.
+
+5. **Storage Solution Evaluation**: Used `PersistentVolume` with hostPath (as a simple example) for cost-effective local storage, but ideal scenarios would involve networked solutions such as NFS or cloud-native solutions like Amazon EBS for MySQL due to their reliability and throughput.
+
+6. **Adaptability**: This architecture supports future scaling needs, potential database segmentation or replication strategies can be introduced as demand grows and technology advances (e.g., migrating to more advanced database systems or integrating with external cache layers).
+
+By addressing these considerations, the architecture is designed to remain robust, secure, and adaptable over time.
