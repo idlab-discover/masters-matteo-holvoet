@@ -1,0 +1,148 @@
+Certainly! Below is the complete Kubernetes YAML configuration manifest for deploying a WordPress website with a MySQL backend, considering all described components such as Deployments, Services, ConfigMaps, Secrets, and Persistent Volume Claims. This creates a secure and maintainable environment for running a WordPress site.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  # base64 encoded data (use echo -n 'your-password' | base64 to generate your own)
+  MYSQL_ROOT_PASSWORD: eW91ci1yb290LXBhc3N3b3Jk
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-configmap
+data:
+  MYSQL_DATABASE: wordpress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: MYSQL_ROOT_PASSWORD
+          - name: MYSQL_DATABASE
+            valueFrom:
+              configMapKeyRef:
+                name: mysql-configmap
+                key: MYSQL_DATABASE
+        ports:
+          - containerPort: 3306
+        volumeMounts:
+          - name: mysql-persistent-storage
+            mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-configmap
+data:
+  WORDPRESS_DB_HOST: mysql:3306
+  WORDPRESS_DB_USER: root
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        ports:
+          - containerPort: 80
+        env:
+          - name: WORDPRESS_DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: wordpress-configmap
+                key: WORDPRESS_DB_HOST
+          - name: WORDPRESS_DB_USER
+            valueFrom:
+              configMapKeyRef:
+                name: wordpress-configmap
+                key: WORDPRESS_DB_USER
+          - name: WORDPRESS_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: MYSQL_ROOT_PASSWORD
+          - name: WORDPRESS_DB_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: mysql-configmap
+                key: MYSQL_DATABASE
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+  selector:
+    app: wordpress
+```
+
+This complete YAML script does the following:
+- **Secrets**: Securely store MySQL credentials.
+- **ConfigMaps**: Holds non-sensitive configuration data for MySQL and WordPress.
+- **PersistentVolumeClaim**: Provides persistent storage for MySQL.
+- **Deployments and Services**: Separate deployments for MySQL and WordPress each with its own service for network connectivity.
+
+This structure ensures that your WordPress and MySQL setup is robust, scalable, and easier to manage.

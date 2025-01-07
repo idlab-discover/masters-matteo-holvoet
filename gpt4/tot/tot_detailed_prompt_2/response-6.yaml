@@ -1,0 +1,139 @@
+```yaml
+# Expert 1: Let's start by defining a simple PersistentVolumeClaim for MySQL. We need to ensure data persistence for the MySQL database.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+# Expert 2: Building on what Expert 1 has defined, I will introduce the MySQL Deployment. I’ll ensure we utilize the PersistentVolumeClaim and introduce a Secret for the MySQL password, which isn't defined yet but we will get to it shortly.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+# Expert 3: Continuing on the work of Experts 1 and 2, let’s now create the Secret referenced in the MySQL deployment for the database password, and also start building the ConfigMap that will be needed for the WordPress deployment.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: <base64-encoded-password>
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  database_name: wordpress
+  user: wordpress
+  password: <base64-encoded-password>
+  hostname: mysql
+
+# Expert 1: Thank you, Expert 3, for setting up the Secret and ConfigMap. Now, I'll take care of the WordPress Deployment, including the environment variables from the ConfigMap. I'll ensure WordPress contacts the correct MySQL service.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: hostname
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: database_name
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: password
+
+# Expert 2: To finish up, let's add the Services for both WordPress and MySQL. This will help in networking between the pods and external access for WordPress.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+# Expert 3: The manifests look good now! We've covered persistent storage, secure password management, and appropriate networking. Plus, the environment settings for WordPress are correctly referencing the ConfigMap and Secret. Well done team!
+
+```

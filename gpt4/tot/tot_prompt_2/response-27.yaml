@@ -1,0 +1,123 @@
+```yaml
+# Expert 1: Let's start by defining the MySQL deployment. We'll create a Kubernetes Deployment object for the MySQL server. Here's a basic structure.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress_password
+# The container requires MYSQL_ROOT_PASSWORD environment variable for the root password.
+# We use a Deployment with a `Recreate` strategy to avoid having multiple instances at the same time, which can cause conflicts.
+
+# Expert 2: Good start by the first expert. However, for the database, we need to ensure data persistence using a volume. Let's add a PersistentVolumeClaim and bind it with the MySQL deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress_password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+# Here, I added a PersistentVolumeClaim and mounted it at /var/lib/mysql in the MySQL container for data storage continuity.
+
+# Expert 3: Excellent enhancements with the volume persistence. Now, for the WordPress side, we need a Deployment and a Service to expose it to the outside world. I will build on what has been done and add the necessary WordPress components.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress_password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+# In this addition, I included the WordPress deployment, another PVC for blog content, and a Service of type LoadBalancer to expose WordPress on port 80.
+```

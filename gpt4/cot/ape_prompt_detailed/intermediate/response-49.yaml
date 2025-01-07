@@ -1,0 +1,172 @@
+Certainly! We'll break down the creation of a Kubernetes YAML manifest to deploy a WordPress website with a MySQL backend step by step. The steps include creating ConfigMaps and Secrets, defining Deployments and Services, and ensuring both components have appropriate accessibility and persistence.
+
+### Step 1: Create a Secret for MySQL Credentials
+
+We’ll start by defining a Kubernetes Secret to securely store the MySQL database credentials.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql_user: YWRtaW4=  # base64 encoded username (admin)
+  mysql_password: cGFzc3dvcmQ= # base64 encoded password
+```
+
+### Step 2: Create ConfigMaps
+
+ConfigMap for MySQL and WordPress to store non-sensitive configuration:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp-mysql-config
+data:
+  mysql_database: wordpress
+  mysql_host: mysql-service
+```
+
+### Step 3: MySQL Deployment and Service
+
+Define a PersistentVolumeClaim for data persistence, a Deployment for the MySQL server, and a Service to expose MySQL:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql_user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql_password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wp-mysql-config
+              key: mysql_database
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+### Step 4: WordPress Deployment and Service
+
+Deployment for WordPress connecting to MySQL and Service to expose WordPress:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql_user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql_password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wp-mysql-config
+              key: mysql_database
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-mysql-config
+              key: mysql_host
+        ports:
+        - containerPort: 80
+          name: wordpress-port
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  ports:
+  - port: 80
+    targetPort: wordpress-port
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Summary
+
+This YAML configuration includes:
+- A Secret for MySQL credentials.
+- A ConfigMap for shared configuration settings.
+- A PersistentVolumeClaim for MySQL storage.
+- Deployments and Services for both WordPress and MySQL.
+
+Apply this manifest using `kubectl apply -f <filename>.yaml`. Be sure to replace the base64 encoded values in the Secret with your actual username and password (after encoding them to base64).

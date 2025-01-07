@@ -1,0 +1,132 @@
+To deploy a WordPress website with a MySQL database backend on Kubernetes, we will create separate Deployments and Services for both WordPress and MySQL. For MySQL, we will create a persistent volume to ensure data persistence. For WordPress, we will connect it to the MySQL Service. Here's how you can setup your YAML files step-by-step:
+
+### Step 1: MySQL Deployment and Service
+
+##### MySQL Secret for storing sensitive data like passwords
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+```
+*Note: Replace YOUR_BASE64_ENCODED_PASSWORD with your actual base64 encoded MySQL root password.*
+
+##### MySQL PersistentVolumeClaim
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+##### MySQL Deployment
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+##### MySQL Service
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 2: WordPress Deployment and Service
+
+##### WordPress Deployment
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+```
+
+##### WordPress Service
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Step 3: Apply the configurations
+1. Save each block into separate .yaml files or a single combined file but properly separated by `---`.
+2. Apply the configurations with `kubectl apply -f <filename>.yaml`.
+
+This setup assumes that you have a Kubernetes cluster with a default storage class set up for handling persistent volume claims. The `LoadBalancer` type in the WordPress service also assumes you are running this in a cloud environment that supports external load balancers. If you're testing locally (e.g., minikube), you might want to change the service type to `NodePort` or use `minikube service wordpress` to expose the service.

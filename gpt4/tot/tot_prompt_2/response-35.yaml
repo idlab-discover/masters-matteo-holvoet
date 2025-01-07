@@ -1,0 +1,174 @@
+```yaml
+# Expert 1:
+# First, let's define the MySQL deployment. We'll use a Deployment object for MySQL. 
+# The Deployment needs a Pod with one container (mysql) and we'll mount a PersistentVolume for data persistence. 
+# We'll create a Service to allow communication. Here's my initial version for MySQL:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: yourpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+
+---
+# For the PersistentVolumeClaim:
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+# Expert 2:
+# This looks solid for MySQL. Moving towards WordPress, we'll need a Deployment and a Service.
+# Following what Expert 1 did, we'll mimic the structure but adapt for WordPress.
+# Note: WordPress will communicate with MySQL, so the correct environment variables need to be set.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-service
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          value: yourpassword
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+---
+# The PersistentVolumeClaim for WordPress:
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+# Expert 3:
+# Both manifestations from Experts 1 and 2 are essentially correct. 
+# We must ensure that secrets are not hardcoded in the manifest for better security, 
+# which can be introduced through Kubernetes Secrets for sensitive data like MySQL root password.
+# Also, let us define resources limits for our containers to ensure good performance and limit resources consumption.
+
+# Edit MySQL and WordPress container specs to use secrets and add resources limits:
+
+# For MySQL:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+# For WordPress:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-service
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+```

@@ -1,0 +1,114 @@
+### Expert 1: Kubernetes Consultant
+
+#### Step 1: Define the Goal
+We need to create Kubernetes manifests that will deploy a WordPress website with a MySQL database as the backend. Both applications need to be containerized with names "wordpress" for WordPress and "mysql" for MySQL.
+
+#### Thinking:
+Given the requirement, we will prepare two main Kubernetes resources:
+1. **Deployment** or **StatefulSet** for MySQL - Since databases usually require persistent storage and stable network identifiers, StatefulSet is suitable.
+2. **Deployment** for WordPress - This will connect to the MySQL database.
+
+Both resources will require ConfigMaps or Secrets for managing configuration data, and Services to expose the applications.
+
+My strategy will be to define these resources clearly in a multi-document YAML file, maintaining simplicity and readability.
+
+#### Step 2: MySQL Manifest Creation
+For MySQL, we will use a StatefulSet for stable networking and a PVC for persistent storage. MySQL needs a `Secret` for sensitive data like passwords.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YourEncodedPasswordHere==
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: "mysql"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+```
+
+#### Step 3: WordPress Manifest Creation
+For WordPress, we require a deployment that can communicate with the MySQL StatefulSet. We'll use environment variables to configure WordPress connection settings to MySQL.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Peer Review and Consensus
+The steps and YAML manifests have been provided in a structured and understandable manner. The resources have been appropriately utilized, and the configuration settings related to WordPress and MySQL connectivity have been logically addressed through environment variables and secrets. 
+
+**Score by Peers**: Considering the correct and applicable approach, the Kubernetes Consultant might receive a score of 5 from each peer, if judged solely on coverage and correctness.

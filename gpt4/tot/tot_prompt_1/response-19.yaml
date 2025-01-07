@@ -1,0 +1,85 @@
+```yaml
+# Step 1: Define a Deployment to create the MySQL container
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: yourpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          value: wordpresspassword
+        ports:
+        - containerPort: 3306
+
+# Step 2: Define a Deployment to create the WordPress container
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-deployment
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpresspassword
+        ports:
+        - containerPort: 80
+
+# Step 3: Create a Kubernetes Service for MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+  clusterIP: None
+
+# Step 4: Create a Kubernetes Service for WordPress
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - port: 80
+  type: LoadBalancer
+```

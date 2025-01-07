@@ -1,0 +1,152 @@
+### Kubernetes YAML Manifest Creation for WordPress and MySQL
+
+---
+
+#### Step 1: Define the Requirements and Structure
+- **Expert 1 (Cloud Infrastructure Architect)**: Begin by creating two deployments, one for WordPress and one for MySQL. Each deployment needs a persistent volume for MySQL and environment configuration via ConfigMaps and Secrets. Also, create services for each to handle network traffic.
+
+- **Expert 2 (DevOps Engineer)**: As a preliminary step, ensure Kubernetes handles persistent data (PersistentVolume and PersistentVolumeClaim) for MySQL and uses ConfigMap for WordPress configurations. Secrets are essential for MySQL passwords. Define services to expose the deployments.
+
+- **Expert 3 (Application Developer)**: Focus on the specification of images and environment variables for both containers. Ensure that the Kubernetes manifests encapsulate aspects like scalability, security (using Secrets), and easy configuration updates (using ConfigMap).
+
+---
+
+#### Experts' Scores:
+**Expert 1 to Others:** Expert 2 - 5, Expert 3 - 4  
+**Expert 2 to Others:** Expert 1 - 5, Expert 3 - 4  
+**Expert 3 to Others:** Expert 1 - 5, Expert 2 - 5
+
+---
+
+#### Group Consensus on Step 1:
+All agree on the fundamental structure: two deployments with associated services, config data handling through ConfigMap and Secrets, and data persistence for MySQL. Scores reflect agreement on structure with subtle differences on emphasis.
+
+---
+
+#### Step 2: YAML Implementation Details
+
+- **Expert 1 (Cloud Infrastructure Architect)**:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: base64-encoded-password
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql:3306
+  WORDPRESS_DB_PASSWORD: secretKeyRef:
+    name: mysql-pass
+    key: password
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+```
+- **Expert 2 (DevOps Engineer)**:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+- **Expert 3 (Application Developer)**:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+---
+
+#### Experts' Scores:
+**Expert 1 to Others:** Expert 2 - 5, Expert 3 - 4  
+**Expert 2 to Others:** Expert 1 - 4, Expert 3 - 4  
+**Expert 3 to Others:** Expert 1 - 5, Expert 2 - 5
+
+---
+
+#### Group Consensus on Step 2:
+The group reached a relatively high consensus on the detailed YAML files, identifying all necessary Kubernetes resources with a slight difference in focus areas: infrastructure, operational, and application specifics. All three sets of YAML are needed to achieve the requirements.
+
+---
+
+#### Final Solution:
+Combining the strengths of each expert's input thus encapsulating a comprehensive and robust deployment strategy for WordPress and MySQL utilising Kubernetes.
+
+The final manifests will integrate the full definitions from each step and expert, ensuring that all critical aspects such as security, persistence, scalability, and configuration management are addressed.

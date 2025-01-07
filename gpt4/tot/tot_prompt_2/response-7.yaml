@@ -1,0 +1,161 @@
+```yaml
+# Expert 1:
+# Starting with the MySQL deployment part of the manifest.
+# I am defining a Deployment for MySQL with only one replica initially.
+# I will use the official MySQL image, tagging it specifically to avoid unintended updates.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: rootpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wpuser
+        - name: MYSQL_PASSWORD
+          value: wppassword
+        ports:
+        - containerPort: 3306
+
+# Above, I used common MySQL environment variables like MYSQL_ROOT_PASSWORD for simplicity.
+# Now, let's define a corresponding service for MySQL to allow communication between pods.
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+```
+
+```yaml
+# Expert 2:
+# Picking up from Expert 1's excellent MySQL base, let's address a few enhancements.
+# Incorporating security practices, it's better to avoid plain text passwords.
+# We should use Kubernetes Secrets to store sensitive information safely.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: d3BwYXNzd29yZA== # Base64 encoded password 'wppassword'
+
+# Adjusting the MySQL deployment to use this Secret
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wpuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+
+# Minimized security risks by removing direct password assignment in the MySQL deployment.
+# Now, let's build the WordPress deployment and service.
+```
+
+```yaml
+# Expert 3:
+# Continuing from Expert 2's improvements on security for MySQL, let's add the WordPress component.
+# I noticed we missed version locking the MySQL image that Expert 2 setup. This is crucial to avoid breaking changes from newer versions.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.1.1-php7.3-apache
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wpuser
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+
+# Adding the WordPress service for external access.
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+
+# Now, WordPress should be accessible from outside the cluster using a LoadBalancer.
+# This setup ensures that communications between the WordPress and MySQL services are secure and that both applications are correctly versioned.
+```

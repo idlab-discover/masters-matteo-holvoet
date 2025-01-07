@@ -1,0 +1,119 @@
+### Expert 1: Kubernetes Deployment Specialist
+
+#### Step 1: Defining MySQL Deployment 
+**Thinking:** For MySQL, I need a Deployment and a Service. Ensure the Deployment has the necessary environment configurations, such as MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, and MYSQL_PASSWORD as secrets or environment variables depending on sensitivity.
+
+#### MySQL Deployment YAML
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: examplepassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          value: wp_pass
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### Score:
+**Expert 2:**
+**Expert 3:**
+
+---
+
+### Expert 2: Kubernetes Networking Specialist
+
+#### Step 1: Defining MySQL Service 
+**Thinking:** To communicate with the MySQL pod from the WordPress container and externally if required, a Service is necessary. This will expose MySQL on a consistent port and manage the network traffic.
+
+#### MySQL Service YAML
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+#### Score:
+**Expert 1:**
+**Expert 3:**
+
+---
+
+### Expert 3: Application Configuration Specialist
+
+#### Step 1: WordPress Deployment Specification
+**Thinking:** WordPress requires certain environmental adjustments especially linking it with the MySQL database we have set up. These will include database name, user, and password, linked via environment variables to the MySQL service.
+
+#### WordPress Deployment YAML
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: wp_pass
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+```
+
+#### Score:
+**Expert 1:**
+**Expert 2:**
+
+---
+
+After writing down these steps, each expert will provide a score to the other experts' steps. If any expert is found inconsistent with good Kubernetes practice (scored below 3), they will step out. In the end, a consensus solution or the strongest suggestion will be adopted to create the final, consolidated Kubernetes YAML manifest for deploying WordPress with a MySQL backend.

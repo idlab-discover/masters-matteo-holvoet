@@ -1,0 +1,286 @@
+### Expert 1 - Kubernetes Engineer
+
+**Thought Process:**
+1. **Begin by creating a deployment for both WordPress and MySQL**:
+   - Use Deployment configurations in Kubernetes manifest format.
+   - MySQL will have a specific environment for database settings and volumes for persistent storage.
+   - WordPress will connect to MySQL using environment variables.
+
+2. **Ensure data persistence for MySQL** using PersistentVolume (PV) and PersistentVolumeClaim (PVC).
+3. **Link between WordPress and MySQL through Kubernetes Services**:
+   - MySQL service will only be accessible internally by the cluster, hence a ClusterIP service type.
+   - WordPress service will be accessible both internally and externally, using a LoadBalancer service type to expose it to the Internet.
+
+**Step 1 - Creating MySQL Deployment**: 
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          value: wordpress
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+**Step 2 - Creating WordPress Deployment**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+```
+
+### Expert 2 - DevOps Consultant
+
+**Thought Process:**
+1. **Focus on security**:
+   - Use Secrets management for MySQL credentials rather than plaintext in the Deployments. This ensures sensitive data is securely managed.
+2. **Optimize resource usage**:
+   - Specify resource requests and limits for both containers to ensure appropriate usage and prevent resource starvation or overuse.
+
+**Step 1 - Creating MySQL Deployment with Security Updates**:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque
+data:
+  root-password: d29yZHByZXNz
+  user-password: d29yZHByZXNz
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: user-password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+**Step 2 - Creating WordPress Deployment with Resource Limits**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  restTemplate:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: user-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+```
+
+### Expert 3 - Cloud Architect
+
+**Thought Process**:
+1. **Focus on scalability and high availability**:
+   - Use Horizontal Pod Autoscaler for both WordPress and MySQL if the load increases.
+2. **Network policy for enhanced security**:
+   - Define network policies that restrict traffic between WordPress and MySQL to known internal components only.
+
+**Step 1 - Enhancing MySQL Deployment with a Readiness Probe**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          value: wordpress
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+**Step 2 - Enhancing WordPress Deployment with Liveness and Readiness Probes**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+```
+
+### Analysis and Best Guess Solution:
+All three experts provided valuable insights. **Expert 1** focused on the basic setup, **Expert 2** emphasized security and resource optimization, and **Expert 3** prioritized scalability and high availability. The best solution would incorporate elements from all three:
+
+- **From Expert 1**: Foundation of deployment.
+- **From Expert 2**: Security measures with Secrets and resource limits.
+- **From Expert 3**: Scalability with readiness and liveness probes continued in the setup.
+
+This consensus-based approach will effectively deploy a WordPress website with a MySQL backend on Kubernetes in a robust, secure, and scalable manner.

@@ -1,0 +1,150 @@
+### Scenario Setup: Kubernetes YAML Deployment for WordPress and MySQL
+
+#### Expert 1: Kubernetes Cluster Administrator
+**Step 1**: Defining Deployment for MySQL
+**Thought Process**:
+- The MySQL container needs to be managed with a Deployment.
+- It should use a persistent volume for data storage to ensure data is not lost when the pod restarts.
+- A Secret must be used to store the MySQL root password securely.
+- The service should expose MySQL within the cluster, not externally.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: BASE64_ENCODED_PASSWORD
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+#### Expert 2: DevOps Engineer
+**Step 1**: Defining Deployment for WordPress
+**Thought Process**:
+- WordPress will also be managed using a Deployment.
+- It needs to connect to MySQL, requiring environment variables for DB_HOST, DB_USER, and DB_PASSWORD.
+- The WordPress service needs to be exposed externally via NodePort or LoadBalancer.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  database_host: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.0-php7.2-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: database_host
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+```
+
+#### Expert 3: Cloud Solutions Architect
+**Step 1**: Evaluating and Integrating the two Deployments
+**Thought Process**:
+- Need to ensure the resources are efficiently created and are communicating correctly.
+- Evaluate security, accessibility, and resilience of the service.
+
+### Review and Scoring:
+
+**Expert 1 Scores**: Expert 2: 5, Expert 3: 4  
+**Expert 2 Scores**: Expert 1: 5, Expert 3: 4  
+**Expert 3 Scores**: Expert 1: 5, Expert 2: 4
+
+### Conclusion:
+Both the deployments are well-defined with security and persistence in mind. The consensus is that both deployments are likely correct with minor individual preferences for service exposure and data management. The detailed Kubernetes manifest using a combination of Deployments, Services, ConfigMaps, and Secrets is a robust solution for deploying WordPress with a MySQL backend in a Kubernetes environment.

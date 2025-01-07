@@ -1,0 +1,132 @@
+### Expert 1: Kubernetes Infrastructure Architect
+
+#### Step 1: Define MySQL Deployment
+Thinking: MySQL requires a stateful setup with persistence, so I start by defining a Deployment for MySQL. A PVC (PersistentVolumeClaim) is a must to handle database storage needs reliably.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        volumeMounts:
+        - mountPoint: /var/lib/mysql
+          name: mysql-pv-storage
+      volumes:
+      - name: mysql-pv-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+#### Step 2: Define WordPress Deployment
+Thinking: WordPress needs to communicate with MySQL, so configuration like database host, name, user, and password are crucial. Using environment variables tied to ConfigMaps and Secrets is essential for security and flexibility.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: db-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: db-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: db-name
+```
+
+#### Step 3: Create Services for Connectivity
+Thinking: Defining Services for both applications will make them accessible to each other and to external traffic for WordPress.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+```
+
+### Expert 2: DevOps Specialist
+
+Expert 2 echoes the thoughts of Expert 1, emphasizing on the security and operational aspects, ensuring all credentials and configuration details are externalized through ConfigMaps and Secrets. Their YAML configuration nearly mirrors Expert 1 with additional notes on best practices like resource limits and readiness/liveness probes which are crucial for production environments.
+
+### Expert 3: Application Deployment Engineer
+
+Expert 3 focuses on the scalability aspects, suggesting changes to allow more replicas for WordPress and MySQL where appropriate. They propose leveraging a StatefulSet for MySQL instead of a Deployment for better handling of state which is a valid consideration for database applications.
+
+### Peer Review Scores
+
+- **Expert 1 on Expert 2**: 4 (Good security handling, though lacking specific Kubernetes features like probes)
+- **Expert 1 on Expert 3**: 5 (Important consideration on StatefulSets, enhances durability and consistency of MySQL)
+- **Expert 2 on Expert 1**: 5 (Solid setup covering basics and advanced Kubernetes patterns)
+- **Expert 2 on Expert 3**: 4 (StatefulSets are a valuable suggestion, but lack some detail)
+- **Expert 3 on Expert 1**: 4 (Good starter config, but can be enhanced with scalability in mind)
+- **Expert 3 on Expert 2**: 4 (Security focus appreciated, but could include more on scaling and availability)
+
+### Conclusion
+
+The consensus leans towards a combination of Expert 1's thoroughness in deployment setup and Expert 3's recommendation to use StatefulSets for MySQL for better state management. These suggestions provide a robust configuration for deploying a WordPress site backed by a MySQL database in Kubernetes, with considerations for security, scalability, and resilience.

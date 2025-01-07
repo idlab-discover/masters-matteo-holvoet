@@ -1,0 +1,180 @@
+Below is a step-by-step setup of a Kubernetes YAML manifest for deploying a WordPress website with a MySQL database using Deployments, PersistentVolumeClaims (PVCs), a Secret for handling sensitive information, and Services. This example consists of a multi-part configuration including:
+
+1. MySQL Deployment
+2. MySQL Service
+3. WordPress Deployment
+4. WordPress Service
+5. Secret to securely store MySQL credentials
+
+### Step 1: Create the Secret for MySQL credentials
+
+The Secret object will hold the username and password for MySQL.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  mysql-password: "YOUR_BASE64_ENCODED_PASSWORD"
+```
+
+### Notes:
+- Replace `"YOUR_BASE64_ENCODED_PASSWORD"` with your actual MySQL password encoded in Base64. Use the `echo -n 'yourpassword' | base64` command to encode your password.
+  
+### Step 2: MySQL Deployment Configuration
+
+This manifest defines the deployment of the MySQL database.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+### Step 3: MySQL PersistentVolumeClaim
+
+This is the PVC configuration for MySQL data persistence.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+```
+
+### Step 4: MySQL Service Configuration
+
+Expose MySQL as a service.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 5: WordPress Deployment Configuration
+
+This manifest defines the WordPress installation.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pvc
+```
+
+### Step 6: WordPress PersistentVolumeClaim
+
+This defines the PVC for WordPress data persistence.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Step 7: WordPress Service Configuration
+
+Expose WordPress as a service.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Putting It All Together
+
+Combine all these sections into a single YAML file, separating them with `---` to delimit one configuration from another within the same file. When deploying this setup on a local cluster or a managed Kubernetes service, ensure that the storage class used by the PVCs matches what is available in your environment.
+
+These configurations form a basic deployment setup for WordPress with MySQL backend on Kubernetes. Adjust and extend features such as readiness probes, liveness probes, and other configurations per your environment and requirements.

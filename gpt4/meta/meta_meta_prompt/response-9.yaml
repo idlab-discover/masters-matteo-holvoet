@@ -1,0 +1,185 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 3 # Ensuring high availability and scalability
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.7
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-master.mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "0.5"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-master
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+      role: master
+  template:
+    metadata:
+      labels:
+        app: mysql
+        role: master
+    spec:
+      containers:
+      - name: mysql-master
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_REPLICATION_MODE
+          value: master
+        ports:
+        - containerPort: 3306
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-slave
+  namespace: wordpress-namespace
+spec:
+  serviceName: "mysql-slave"
+  replicas: 2 # Ensuring availability in case master fails
+  selector:
+    matchLabels:
+      app: mysql
+      role: slave
+  template:
+    metadata:
+      labels:
+        app: mysql
+        role: slave
+    spec:
+      containers:
+      - name: mysql-slave
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_REPLICATION_MODE
+          value: slave
+        ports:
+        - containerPort: 3306
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  password: c3VwZXJzZWN1cmVwYXNzd29yZA== # Base64 encoded password
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Rationale for Design Choices:
+1. **High Availability and Scalability**: Multiple replicas of the WordPress deployment and MySQL slaves ensure that the service remains available even if one instance fails. Load balancing for WordPress is managed via a Kubernetes Service of type LoadBalancer.
+
+2. **Data Consistency and Durability**: Using a StatefulSet for MySQL slaves allows consistent storage and stable unique network identifiers.
+   
+3. **Security**: Secrets management is handled by Kubernetes Secrets to store sensitive information like database passwords.
+
+4. **Performance**: Resource limits and requests are defined to ensure that the containers get enough resources to handle peak loads efficiently without overwhelming the host resources.
+
+5. **Recovery Strategy**: The use of MySQL replication (master-slave configuration) helps in providing data redundancy. If the master fails, one of the slaves can be promoted to master, minimizing downtime.
+
+### Considerations for Performance Optimization:
+- **Database Optimization**: Tuning MySQL parameters such as buffer pool size, and query cache limit can help enhance performance.
+- **Caching**: Implementing caching mechanisms like Redis for WordPress could reduce database load and improve response times.
+
+### Security Enhancements:
+- **Web Application Firewall (WAF)**: Use Kubernetes network policies or employ a service mesh to provide additional security layers such as rate limiting and intrusion detection.
+- Implement HTTPS by default using cert-manager for automatic certificate management.
+
+### Handling MySQL Failure:
+If the MySQL master fails, the deployment could automatically promote a slave to master, ensuring minimal service disruption. Regular backups and monitoring would be critical components of the operational strategy to handle potential database failures effectively.
+
+This comprehensive design aims at a balance between performance, availability, and security, addressing multiple facets of deploying a robust WordPress environment in Kubernetes.

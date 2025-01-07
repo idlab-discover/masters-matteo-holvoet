@@ -1,0 +1,146 @@
+### Expert 1: Kubernetes Cloud Architect
+
+#### Step 1: Define MySQL Deployment
+The first step involves creating a MySQL deployment manifest. MySQL will require Persistent Volume to ensure the data persists across pod restarts. A StatefulSet is suitable for this purpose, but for simplicity, a Deployment with a PersistentVolumeClaim would be adequate too. Here we configure the MySQL container named "mysql", expose the necessary port, and use environment variables for MySQL credentials.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+#### Expert 1 Score: [__]
+
+---
+
+### Expert 2: Kubernetes DevOps Engineer
+
+#### Step 1: Define MySQL Deployment
+Creating a YAML file for the MySQL deployment focusing on high availability and security would be essential. We can use a Deployment resource to manage the application. Ensure that the deployment strategy handles updates correctly, and use ConfigMaps and Secrets to manage configuration and sensitive data respectively.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-configmap
+              key: database-name
+      volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+```
+
+#### Expert 2 Score: [__]
+
+---
+
+### Expert 3: Kubernetes Application Developer
+
+#### Step 1: Define MySQL Deployment
+For deploying MySQL, it's imperative to focus on configurability and maintenance ease. Kubernetes Deployments alongside persistent volumes allow for manageable and updatable configurations. By defining environments variables directly and using a predefined PersistentVolumeClaim, we maintain ease of application without advanced configurations.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: verystrongpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### Expert 3 Score: [__]
+
+---
+
+### Analysis and Consensus
+
+As we analyze the manifests proposed by each expert, we note that all have correctly set up a basic MySQL deployment with persistent storage, environment configurations, and necessary ports. Each expert emphasizes different aspects:
+
+- **Expert 1** focuses on simplicity and core functionality.
+- **Expert 2** emphasizes security and configuration management using Kubernetes native resources like ConfigMap and Secrets.
+- **Expert 3** opts for straightforward config but lacks emphasis on best security practices.
+
+The consensus seems to lean towards Expert 2's strategy considering the full Kubernetes feature utilization including security-oriented configurations, which is crucial for production environments.

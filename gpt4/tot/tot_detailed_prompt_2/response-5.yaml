@@ -1,0 +1,158 @@
+**Expert 1 (Alice):**
+```yaml
+# Begin by defining the ConfigMap which stores configuration files related to our WordPress and MySQL deployments.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  MYSQL_DATABASE: wordpress
+  MYSQL_USER: wordpress_user
+
+# Define a Secret for storing sensitive information such as database passwords.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  MYSQL_PASSWORD: <base64-encoded-password>
+  MYSQL_ROOT_PASSWORD: <base64-encoded-root-password>
+```
+Explanation: Starting off, I defined a ConfigMap which provides non-sensitive data required for our MySQL setup. For security purposes, I used a Secret to store passwords. Make sure that the password fields are base64 encoded as Kubernetes secrets are stored in base64 encoding.
+
+---
+
+**Expert 2 (Bob):**
+```yaml
+# Edit and refine Alice's proposal regarding the configuration of Services and PVCs.
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+  selector:
+    app: wordpress
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+
+# Define PersistentVolumeClaim for MySQL data preservation
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+Explanation: I continued where Alice left off, adding the needed Kubernetes Services for both WordPress and MySQL. I chose `NodePort` for WordPress for easier external access and `ClusterIP` for MySQL as it requires internal access only. For database persistence, I added a PVC for MySQL.
+
+---
+
+**Expert 3 (Charlie):**
+```yaml
+# Finally, let us delve into the Deployment manifests for both WordPress and MySQL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: MYSQL_DATABASE
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: MYSQL_USER
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_PASSWORD
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: wordpress-config
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_PASSWORD
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-storage
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+```
+Explanation: Adding the deployment details, I configured the WordPress and MySQL deployments using the previously defined ConfigMaps, Secrets, and PersistentVolumeClaim. Here, I specified all necessary environment variables for connections and functionality using ConfigMap and Secret references.

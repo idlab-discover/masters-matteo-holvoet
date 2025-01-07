@@ -1,0 +1,148 @@
+### Expert 1: Kubernetes Administrator
+
+**Step 1:** **Creating MySQL Deployment and Services**
+- **Thinking:** MySQL requires a Deployment for managing the pods and a Service for network access. A PersistentVolumeClaim (PVC) ensures data persistence beyond the lifespan of individual Pods.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+```
+**Score this submission:** 
+
+**Step 2:** **Creating WordPress Deployment and Services**
+- **Thinking:** WordPress needs to interact with MySQL, so using environment variables to specify MySQL details is crucial. A Deployment and a Service are required for managing the life cycle and accessing WordPress.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: "mysql"
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: dbname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+```
+
+**Score this submission:** 
+
+**Step 3:** **Creating ConfigMap and Secret**
+- **Thinking:** ConfigMaps and Secrets are crucial for managing configuration data and sensitive information respectively without hard-coding them into the application images or pod specs.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  username: cm9vdA==
+  password: cGFzc3dvcmQ=
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  dbname: wordpress
+```
+**Score this submission:** 
+
+### Experts 2 and 3 should continue in a similar fashion detailing their reasoning and constructing respective YAMLs for each step. After completing stepwise construction, the group should score and provide feedback for each submission. Final solution would be an amalgamation or selection of the best-scored submission from each step analyzed together.

@@ -1,0 +1,177 @@
+### Expert A: DevOps Engineer with Kubernetes Specialization
+
+#### Step 1 - Designing MySQL Deployment and PersistentVolumeClaim
+
+The MySQL deployment must adhere to best practices for stateful applications:
+- Use of a `PersistentVolumeClaim` ensures that the data can persist across pod restarts.
+- Properly configure environment variables via a Secret (passwords) and ConfigMap (other configs) to customize the MySQL instance.
+- Ensure the Service is set to ClusterIP to internalize database communications.
+
+My MySQL Deployment YAML:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### Expert B: Application Architect
+
+#### Step 1 - Designing Both Deployments and Persistent Storage for MySQL
+
+While designing the deployment, attention is needed on separation of concerns:
+- MySQL data should be separated using PersistentVolumeClaims.
+- WordPress connects to MySQL with credentials stored in Secrets.
+- ConfigMaps should handle non-sensitive configuration.
+
+Proposed MySQL configuration:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### Expert C: Cloud Engineer
+
+#### Step 1 - MySQL with Persistent Storage and Configurations
+
+For MySQL:
+- Secure MySQL deployment using Kubernetes Secrets for sensitive information.
+- PersistentVolumeClaim to ensure data longevity.
+- Deployment strategy that emphasizes simplicity and security.
+
+Configuration for MySQL:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast
+  resources:
+    requests:
+      storage: 5Gi
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+### Analysis and Scoring
+Each expert has provided a solid foundation for the MySQL deployment incorporating best practices around data persistence and security through the use of PVCs, Secrets, and standard image versions.
+
+- **Expert A**: Scores a 5 for strong adherence to conventional designs and clarity.
+- **Expert B**: Scores a 5 as well but proposes a significantly higher storage request.
+- **Expert C**: Also scores a 5 for covering all critical aspects but uses the latest MySQL image which might introduce unwanted changes upon updates.

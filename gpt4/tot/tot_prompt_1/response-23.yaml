@@ -1,0 +1,276 @@
+### Step 1: Define the MySQL Deployment
+
+**Expert A:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: mypassword
+```
+
+**Expert B:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          value: wordpresspass
+```
+
+**Expert C:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: strongpassword
+        - name: MYSQL_DATABASE
+          value: wordpressdb
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          value: wordpresspassword
+```
+
+### Step 2: Validate MySQL Deployment Configuration
+
+**Expert A:**
+Realizes that they should specify a specific MySQL version and leave the group because versioning is crucial for predictable deployments.
+
+**Continued Review by remaining experts, Expert B and Expert C:**
+
+**Expert B:**
+Confirms the MySQL deployment is okay but wonders if specifying environment variables for database, user, and password is the right approach and decides to add that in the next step. Feels that the strategy type should match the rest.
+
+**Expert C:**
+Confirms that using specific versions and security-centric configurations like specifying user credentials directly in the manifest is risky and plans to use Kubernetes Secrets in the next steps for better security practices. Adjusts their previous base to include the password through Secrets.
+
+### Step 3: Define Kubernetes Secrets and Update MySQL Deployment
+
+**Expert B:**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+   name: mysql-pass
+type: Opaque
+data:
+   password: cGFzc3dvcmQ=  # Base64 encoded "wordpresspass"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+```
+
+**Expert C:**
+Adds the use of Kubernetes Secrets effectively for enhanced security:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+   name: mysql-secret
+type: Opaque
+data:
+   root_password: c3Ryb25ncGFzc3dvcmQ=  # Base64 for "strongpassword"
+   db_password: d29yZHByZXNzcGFzc3dvcmQ=  # Base64 for "wordpresspassword"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root_password
+        - name: MYSQL_DATABASE
+          value: wordpressdb
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: db_password
+```
+
+### Step 4: Define the WordPress Deployment and Service
+
+**Expert B:**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+    ...
+```
+
+**Expert C:**
+Continues to demonstrate security practices and completes the deployment:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: db_password
+        - name: WORDPRESS_DB_NAME
+          value: wordpressdb
+```
+
+**Expert B:** Adopts Expert C's approach with Secrets for the WordPress deployment and completes the YAML.

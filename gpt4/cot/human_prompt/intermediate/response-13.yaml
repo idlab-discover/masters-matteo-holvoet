@@ -1,0 +1,148 @@
+Below, I'll guide you through creating a simple Kubernetes manifest with two containers, WordPress and MySQL, using Deployments and Services to facilitate communication within the cluster. Each component will be configured for basic functionality, and I'll assume that we want to make the WordPress website accessible from outside the cluster.
+
+### Step 1: MySQL Deployment and Service
+
+First, we'll set up the MySQL database. We'll use a Secret for MySQL credentials and then create a deployment and service.
+
+#### A. Create a Kubernetes Secret for MySQL Password
+
+To safely pass sensitive information such as the MySQL root password, we can use a Kubernetes Secret.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  mysql-password: YOUR_BASE64_ENCODED_PASSWORD
+```
+
+Replace `YOUR_BASE64_ENCODED_PASSWORD` with the base64 encoded form of your desired password (you can encode your password using `echo -n 'yourpassword' | base64`).
+
+#### B. MySQL Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        emptyDir: {}
+```
+
+#### C. MySQL Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 2: WordPress Deployment and Service
+
+Next, set up the WordPress frontend, connecting it to the MySQL backend.
+
+#### A. WordPress Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        emptyDir: {}
+```
+
+#### B. WordPress Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: wordpress
+  selector:
+    app: wordpress
+```
+
+### Completing the Setup
+
+Save each section into `wordpress-mysql.yml` and deploy it using:
+
+```bash
+kubectl apply -f wordpress-mysql.yml
+```
+
+This configuration setup uses `emptyDir` for volumes, meaning the data stored in MySQL and WordPress won't persist if the pods are deleted. For production environments, consider using Persistent Volumes (PV) and Persistent Volume Claims (PVC) to ensure data persistence. This basic deploy will, however, work sufficiently for testing purposes in a non-production environment.

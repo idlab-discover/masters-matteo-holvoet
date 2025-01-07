@@ -1,0 +1,195 @@
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-system
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-system
+type: Opaque
+data:
+  password: bXlzcWxfc2VjcmV0X3Bhc3N3b3Jk # Base64 encoded "mysql_secret_password"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: wordpress-system
+data:
+  my.cnf: |
+    [mysqld]
+    skip-host-cache
+    skip-name-resolve
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # headless service
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.8-php7.4-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.wordpress-system.svc.cluster.local
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+```
+
+This manifest delineates a high-level setup for a WordPress site with a MySQL database optimized for security and scalability. Here's a breakdown:
+
+1. **Namespace**: Isolates resources for easy management and security enhancement.
+2. **Secret**: Stores the MySQL password securely and references it in deployments.
+3. **ConfigMap**: Contains MySQL configuration options to optimize database performance.
+4. **Persistent Volumes**: Ensures data persistency for both MySQL and WordPress, critical for avoiding data loss.
+5. **Deployments**:
+   - **MySQL**: Single replica for the database, using a readiness and liveness probe to manage the container’s state effectively.
+   - **WordPress**: Multiple replicas balance the load and improve service availability, with readiness and liveness probes ensuring that traffic is only sent to ready instances.
+6. **Services**:
+   - **MySQL**: A headless service to allow direct pod addressing, which is useful for stable network identity.
+   - **WordPress**: LoadBalancer to distribute incoming traffic, enhancing scalability.
+
+This setup provides a foundation for a scalable, resilient WordPress environment by considering aspects like data integrity, security, and fault tolerance.

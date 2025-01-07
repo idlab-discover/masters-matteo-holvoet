@@ -1,0 +1,248 @@
+### Expert 1 - Initial Design:
+
+Let's start by identifying the components we need in Kubernetes to set up a WordPress website with a MySQL backend.
+
+1. Two Deployments:
+   - **WordPress Deployment**: Should have the WordPress container.
+   - **MySQL Deployment**: Should have the MySQL container.
+   
+2. PersistentVolumeClaims:
+   - For the MySQL database to ensure data persistence.
+
+3. Services:
+   - To expose both WordPress and MySQL within the cluster.
+
+4. ConfigMaps and Secrets:
+   - ConfigMaps to manage configuration settings.
+   - Secrets for managing sensitive information like database passwords.
+
+Here is the basic skeleton for these components:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: [BASE64_ENCODED_PASSWORD]
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  MYSQL_DATABASE: wordpress
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_ROOT_PASSWORD
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: MYSQL_DATABASE
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+```
+
+### Expert 2 - Review and Improvements:
+
+Good start by Expert 1. Let's correct a few things and discuss possible improvements:
+
+1. **Secret Encoding**: Expert 1 correctly included a secret for the MySQL root password, but we must ensure to provide guidance on encoding the password in Base64.
+   
+2. **Resource Requests and Limits**: It's generally good practice to set resource requests and limits for the containers to ensure predictable allocation of CPU and memory resources.
+
+3. **Readiness and Liveness Probes**: Adding these would increase the reliability of our deployment by managing the application state based on health.
+
+Here are the changes integrated into the original script:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_ROOT_PASSWORD
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: MYSQL_DATABASE
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        resources:
+          requests:
+            memory: "500Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        enviroment:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_ROOT_PASSWORD
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+```
+
+### Expert 3 - Validation & Optional Enhancements:
+
+Experts 1 and 2 have set an excellent foundation. We double-checked the secret creation process and refined Deployment configurations. Now, let’s look into optional enhancements and validate the workflow:
+
+1. **Security Contexts**: We can add security contexts to restrict privileges further, which is a best practice.
+
+2. **Ingress**: Provided that this is used in a production environment, adding an Ingress would be beneficial for managing access to the WordPress through an external URL. This step, however, goes beyond the initial request and might require additional configuration like an Ingress controller setup and TLS certificates.
+
+Finally, the final configuration looks complete and robust with good practices like resource limits, probes, and careful secret handling. Once these Kubernetes objects are deployed, they should create a functioning WordPress site backed by a MySQL database, as long as the underlying Kubernetes cluster is correctly configured to support these features.

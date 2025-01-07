@@ -1,0 +1,410 @@
+### Step 1: Define the Problem and Required Components
+
+#### Kubernetes Expert 1:
+To deploy WordPress and MySQL on Kubernetes, we need two Deployments, two Services, a PersistentVolumeClaim for MySQL, and necessary ConfigMaps and Secrets. We start with creating Secrets for MySQL credentials, then a ConfigMap for MySQL and WordPress configurations. Following this, Deployments are created for each application with respective environment variables taken from Secrets and ConfigMaps. Finally, we create Services to expose them on network.
+
+**Score:** 5
+
+#### Kubernetes Expert 2:
+First, we outline the artifacts needed: Deployments for WordPress and MySQL to manage their lifecycle, Services for network access, a PersistentVolumeClaim for the MySQL database to persist data, plus ConfigMaps and Secrets for configurable parameters and sensitive data respectively. It’s essential to be specific about versioning of images and to optimize replica counts for both Deployments to ensure availability and performance.
+
+**Score:** 5
+
+#### Kubernetes Expert 3:
+We need two main Deployments - one for MySQL and another for WordPress. Each should be paired with a Service to ensure that they are accessible. MySQL Deployment should include a PersistentVolumeClaim to ensure that data persists beyond the pod lifecycle. For security and configuration, we will use Secrets for MySQL credentials and ConfigMaps for any additional configuration. WordPress needs to be set up connecting to MySQL using these variables provided by ConfigMaps and Secrets.
+
+**Score:** 5
+
+### Step 2: Create YAML Configurations for Secrets and ConfigMap
+
+#### Kubernetes Expert 1:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  username: bXlzcWw=       # Base64 encoded 'mysql'
+  password: c2VjcmV0        # Base64 encoded 'secret'
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  database: wordpress_db
+```
+
+**Score:** 5
+
+#### Kubernetes Expert 2:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-creds
+type: Opaque
+data:
+  MYSQL_USER: bXlzcWx1c2Vy        # 'mysqluser' base64 encoded
+  MYSQL_PASSWORD: cGFzc3dvcmQ=  # 'password' base64 encoded
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config-map
+data:
+  mysql-root-database: "wordpress"
+```
+
+**Score:** 4 (slight naming inconsistency)
+
+#### Kubernetes Expert 3:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: bXlzcWxwYXNz      # 'mysqlpass' base64 encoded
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp-config
+data:
+  database-host: "mysql-service"
+```
+
+**Score:** 4.5 (incomplete needed variables)
+
+### Step 3: Create the Deployment YAML for MySQL
+
+#### Kubernetes Expert 1:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+**Score:** 5
+
+#### Kubernetes Expert 2:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1  # Ensuring only one instance to avoid conflicts
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+    labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-creds
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-creds
+              key: MYSQL_PASSWORD
+        volumeMounts:
+        - mountPath: "/var/lib/mysql"
+          name: mysql-data
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+**Score:** 4 (missing root password setup)
+
+#### Kubernetes Expert 3:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_ROOT_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+**Score:** 5
+
+### Step 4: Create the Deployment YAML for WordPress
+
+#### Kubernetes Expert 1:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: database-host
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 80
+```
+
+**Score:** 5
+
+#### Kubernetes Expert 2:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 2  # Ensuring high availability
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.7
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: "mysql-service"
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-creds
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-creds
+              key: MYSQL_PASSWORD
+```
+
+**Score:** 4 (host not from ConfigMap)
+
+#### Kubernetes Expert 3:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3  # Load balance between three instances
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.1
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: database-host
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_ROOT_PASSWORD
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_ROOT_PASSWORD
+```
+
+**Score: 3** (Incorrect key mappings and root password used for WordPress DB user and password)
+
+### Step 5: Create Services for MySQL and WordPress
+
+#### Kubernetes Expert 1:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: wordpress
+  ports:
+  - port: 80
+```
+
+**Score:** 5
+
+#### Kubernetes Expert 2:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+**Score:** 4 (NodePort might expose WordPress unnecessarily to external connections)
+
+#### Kubernetes Expert 3:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+**Score:** 5
+
+### Final Analysis:
+
+Consensus across experts shows a general agreement on the architecture, with minor discrepancies in the application of key mappings and service type specifics. Composite of all inputs would lead to forming a robust deployment strategy for WordPress and MySQL using Kubernetes, retaining the best practice considerations provided by all experts. It's advisable to use Secrets and ConfigMaps as Expert 1 specified, Deployments as outlined best by Expert 1 and 3, and stick with Services as illustrated by Expert 1 for best security and availability configuration. This composite manifests would most likely provide the most comprehensive and secure way to deploy WordPress with a MySQL backend on Kubernetes.

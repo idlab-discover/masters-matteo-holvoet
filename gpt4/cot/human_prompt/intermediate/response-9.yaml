@@ -1,0 +1,157 @@
+To deploy a WordPress website with a MySQL database backend on a Kubernetes cluster, you need to create several resources. These include secret objects for storing sensitive data, deployment objects for running the WordPress pods and MySQL pods, and services to expose these pods.
+
+### Step 1: Creating a Secret for MySQL Credentials
+First, you should create a Kubernetes Secret to store the MySQL database password. This ensures sensitive data is not exposed in plain text in your deployment files.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: <base64-encoded-password>  # Use base64 to encode your MySQL password
+```
+Replace `<base64-encoded-password>` with your actual base64-encoded password. Encode your password as follows:
+```bash
+echo -n 'yourpassword' | base64
+```
+
+### Step 2: MySQL Deployment
+Next is defining the MySQL deployment. MySQL should be set with the environment variables read from the secrets previously defined.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.6
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+``` 
+
+### Step 3: MySQL Service
+Create a service to expose MySQL within the cluster so that WordPress can access it.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 4: WordPress Deployment
+Now define the WordPress deployment. WordPress will also utilize the MySQL environment variables.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+```
+
+### Step 5: WordPress Service
+Create a service to expose the WordPress application to the outside world.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Persistent Volume Claims
+Note that in the deployments above, both WordPress and MySQL expect PersistentVolumeClaims (`mysql-pvc` and `wordpress-pvc`, respectively). You need to create these, referencing your cluster's storage class as required:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+Make sure that the `spec.resources.requests.storage` value meets your requirements in terms of size. The storage class should automatically be defined according to your Kubernetes cluster setup or can explicitly be set if needed.
+
+By applying these YAML files in Kubernetes (using `kubectl apply -f <filename>.yaml`), you can deploy a simple WordPress website backed by a MySQL database. Be sure to configure port forwarding, firewall rules, or DNS as needed depending on your setup and how you access the Kubernetes cluster.

@@ -1,0 +1,178 @@
+Here is a comprehensive Kubernetes YAML manifest incorporating the specified requirements for deploying a WordPress website paired with a MySQL database:
+
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-namespace
+data:
+  WORDPRESS_DB_HOST: mysql-service
+  WORDPRESS_DB_USER: wp_user
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  mysql-password: d3ByZHNlY3JldA==  # Base64 encoded 'wpdbsecret'
+  mysql-root-password: cm9vdHNlY3JldA==  # Base64 encoded 'rootsecret'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: MYSQL_DATABASE
+          value: wordpress_db
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  namespace: wordpress-namespace
+spec:
+  replicas: 2  # Starts with 2 replicas. Can be configured to scale based on traffic
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.9-php7.4-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 60
+          periodSeconds: 60
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+**Detailed Explanation for Each Section:**
+
+1. **Namespace**: Created a dedicated namespace `wordpress-namespace` for all components to encapsulate and manage them distinctly, enhancing security and organizational clarity.
+
+2. **ConfigMaps and Secrets**:
+   - **ConfigMap**: `wordpress-config` carries non-sensitive data like database host and user, allowing easy updates without restarting pods.
+   - **Secret**: `mysql-secret` manages sensitive data like database passwords, using Base64 encoding for values. Discussing alternative encryption methods could include implementing a third-party secrets manager like HashiCorp Vault for more robust encryption and rotation of secrets.
+
+3. **MySQL Deployment**:
+   - Uses MySQL 5.7 image optimized for stability.
+   - A `PersistentVolumeClaim` ensures data persistence.
+   - Environment variables are configured from `Secrets` for security.
+
+4. **WordPress Deployment**:
+   - Uses WordPress image with PHP 7.4 and Apache for performance and compatibility.
+   - Utilizes `ConfigMap` and `Secret` to configure the environment securely.
+   - Liveness and readiness probes enhance the reliability, ensuring the container is restarted or repaired if it becomes unhealthy.
+
+5. **Services**:
+   - **MySQL Service**: Type `ClusterIP` as it is only accessed internally by WordPress.
+   - **WordPress Service**: Type `LoadBalancer` to expose WordPress to the Internet, providing an entry point for visitors.
+
+This manifest ensures the scalability, security, and efficiency of the deployed WordPress site and its MySQL database backend, employing advanced Kubernetes features such as liveness probes, readiness probes, config management through `ConfigMaps` and `Secrets`, and proper service exposure controlling traffic flow.

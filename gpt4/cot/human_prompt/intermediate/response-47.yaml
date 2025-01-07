@@ -1,0 +1,192 @@
+Creating a Kubernetes YAML manifest to deploy a WordPress website using a MySQL database involves setting up several components:
+1. **Persistent Volume (PV) and Persistent Volume Claim (PVC)**: These will store data for the MySQL database and WordPress content even when the pods are restarted or rescheduled.
+2. **Deployment**: This will manage the WordPress and MySQL containers.
+3. **Service**: This will expose WordPress and MySQL applications to be accessed within the cluster (MySQL) or externally (WordPress).
+
+We'll split this configuration into steps to make it easier to understand and manage. This example assumes you are using a default Kubernetes namespace and basic configurations.
+
+### 1. Persistent Volume and Persistent Volume Claim
+
+MySQL and WordPress both require persistent storage. Below are basic examples of PV and PVC for both applications. Replace values with your specific configuration needs, especially regarding persistent storage types available in your environment.
+
+**MySQL Storage:**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/mysql"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      type: local
+```
+
+**WordPress Storage:**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/wordpress"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      type: local
+```
+
+### 2. MySQL Deployment and Service
+
+Here we configure the MySQL container with environmental variables for username and database creation.
+
+**MySQL Deployment and Service:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: yourpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          value: wordpresspassword
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### 3. WordPress Deployment and Service
+
+This setup creates a WordPress deployment that connects to the MySQL database.
+
+**WordPress Deployment and Service:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpresspassword
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+This configuration sets up a basic WordPress site with a MySQL backend, each with persistent storage, and exposes the WordPress site using a LoadBalancer service (modify according to your cluster’s external access capabilities). Deployment will recreate pods when necessary, maintaining persistent data. Adjustments might be necessary based on the specifics of your Kubernetes environment and cloud provider.

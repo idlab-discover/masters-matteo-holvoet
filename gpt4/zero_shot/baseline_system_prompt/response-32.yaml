@@ -1,0 +1,133 @@
+Here's a basic Kubernetes YAML manifest that deploys a WordPress website with a MySQL database. The deployment includes two deployments and two services:
+
+1. **MySQL Deployment**: A deployment for the MySQL database. It contains the MySQL container and a service to expose the MySQL internally within the cluster.
+2. **WordPress Deployment**: A deployment for the WordPress application, connecting to the MySQL database. It also includes a service to expose WordPress to external traffic.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: yourpassword
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          value: yourpassword
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Breakdown and Notes:
+- **PersistentVolumeClaims**: These are for persistent storage for MySQL and WordPress so data is retained across pod restarts.
+- **MySQL Deployment**: Uses MySQL 5.7 and sets up the environment variables necessary to run MySQL. It does not expose MySQL outside of the cluster.
+- **WordPress Deployment**: Connects to MySQL using environment variables and exposes the WordPress site on port 80.
+- **Services**: Two services, the MySQL service is cluster internal and WordPress service is exposed externally through a LoadBalancer (this will make the WordPress accessible from the outside).
+
+Be sure to replace `yourpassword` with a strong password for MYSQL_ROOT_PASSWORD in production. Also, adjust the persistent volumes according to your cluster environment and storage needs.

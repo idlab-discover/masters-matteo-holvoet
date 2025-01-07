@@ -1,0 +1,151 @@
+## Step 1: Define the MySQL Deployment
+
+### Expert 1:
+For setting up MySQL, we need to define a Deployment object in YAML. This should include a spec that describes the MySQL container, which should pull the MySQL image. We also need to ensure we handle the database persistence through a volume.
+
+### Expert 2:
+We start by creating a MySQL deployment with the container image 'mysql:5.7' because it's stable. We'll also set environment variables for MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, and MYSQL_PASSWORD using Kubernetes secrets for security.
+
+### Expert 3:
+The MySQL container requires persistent storage to ensure data is not lost if the container restarts. We'll use a PersistentVolumeClaim (PVC) to request storage from the cluster.
+
+```yaml
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+## Step 2: Define the MySQL PersistentVolumeClaim
+
+### Expert 1:
+Next, define the PersistentVolumeClaim for MySQL, requesting necessary storage capacity, like 10GB, and access modes like ReadWriteOnce which ensures only one node can mount the volume at a time.
+
+### Expert 2:
+I realize I have underestimated the significance of specifying access modes and storage class for the PVC. This information is crucial to ensure the right configuration with underlying infrastructure. I'm leaving the discussion.
+
+### Expert 3:
+In addition to previously noted factors, we need to specify a storage class to guide the type of storage used by the PVC. We'll leave the storageClassName default to use whatever is set by the cluster.
+
+```yaml
+# MySQL PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+## Step 3: Define the WordPress Deployment
+
+### Expert 1:
+Creating the WordPress deployment involves setting a container named 'wordpress' that uses the image 'wordpress:latest'. This container should also be linked to the MySQL service using environment variables like WORDPRESS_DB_HOST and WORDPRESS_DB_PASSWORD sourced from the same secrets as the MySQL deployment.
+
+```yaml
+# WordPress Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: database
+        ports:
+        - containerPort: 80
+```
+
+### Expert 3: 
+I concur with Expert 1 on the setup for WordPress. Further, a service object would need to be defined to expose WordPress to the internet through port 80.
+
+```yaml
+# WordPress Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+In this way, the WordPress application is correctly configured to communicate with the MySQL database and exposed to the outside through a LoadBalancer service.

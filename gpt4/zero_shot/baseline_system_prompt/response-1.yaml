@@ -1,0 +1,116 @@
+Here's a Kubernetes YAML manifest that sets up a WordPress website using a MySQL database as the backend. The manifest includes deployments and services for both WordPress and MySQL. Each container (MySQL and WordPress) is configured according to typical configurations, such as environment variables for MySQL credentials which are used by the WordPress instance to connect to the MySQL database.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  password: bXlzcWxwYXNzCg==  # Encoded value of 'mysqlpass'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+This manifest provides a basic deployment for both WordPress and MySQL. Some key points to note:
+
+1. **Namespace**: The manifest includes a namespace `wordpress-namespace` to isolate these resources in the cluster.
+2. **Secret**: A Kubernetes Secret `mysql-pass` is used to store the MySQL root password.
+3. **Deployments**: Separate deployments for WordPress and MySQL, with environment variables configured to connect WordPress to the MySQL database using the credentials stored in the secret.
+4. **Services**: Includes a NodePort service for WordPress, allowing access from outside the cluster, and a ClusterIP service for MySQL that doesn't expose MySQL outside the cluster.
+
+Change the base64 string in the Secret object if you wish to use a different password for MySQL (`echo -n 'yourpassword' | base64`).

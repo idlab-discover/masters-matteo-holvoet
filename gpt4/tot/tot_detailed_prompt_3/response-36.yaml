@@ -1,0 +1,157 @@
+## Step 1: Design the WordPress Deployment
+
+### Expert A - Kubernetes Architect
+
+**Analysis**: To deploy WordPress, we use the official WordPress image and set environment variables with a Service linked to a MySQL database. We set environment variables like `WORDPRESS_DB_HOST` and `WORDPRESS_DB_PASSWORD` via ConfigMaps and Secrets respectively. Expose WordPress on port 80.
+
+**YAML Thought Process**:
+- Container name: "wordpress".
+- Image: "wordpress:latest".
+- Ports: 80 exposed.
+- Environment Variables from ConfigMap for `WORDPRESS_DB_HOST` and from Secret for `WORDPRESS_DB_PASSWORD`.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: database-host
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+```
+
+### Expert B - DevOps Engineer
+
+**Analysis**: The Deployment should handle the WordPress lifecycle and ensure it connects to MySQL using a ConfigMap to reference the MySQL Service. Include liveness and readiness probes to ensure availability and manage service health.
+
+**YAML Thought Process**:
+- Probes to check health of WordPress.
+- Secure connection details pulled from Kubernetes secrets.
+- Resource requests and limits to ensure QoS.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: database-host
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+```
+
+### Expert C - Security Analyst
+
+**Analysis**: Ensure the WordPress Deployment is secured with proper secret management for database credentials. Use environment variables for configurable options, isolating sensitive data.
+
+**YAML Thought Process**:
+- Emphasize security by using Kubernetes Secrets for MySQL password.
+- Environment setup for secure connections and operational security in configuration.
+- Use of least privilege principle in Kubernetes resource assignments.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: database-host
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+```
+
+**Scoring**:
+- **Expert A**: Offers a balanced approach with general best practices. Score: 4
+- **Expert B**: Adds detailed resource management and health checks. Score: 5
+- **Expert C**: Focuses strongly on security aspects, somewhat overlooking broader configuration elements. Score: 4
+
+## Best Guess Solution
+
+Based on the analyses, the best approach seems to be a blend of Expert B's detailed health checks and resource definitions, with Expert C's emphasis on security practices. The involvement of both thoroughly checks the service's health and secures sensitive data. Adjustments would be made to balance all aspects based on these insights.

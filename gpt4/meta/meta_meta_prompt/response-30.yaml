@@ -1,0 +1,127 @@
+To deploy the desired WordPress website along with a MySQL database in a Kubernetes environment, the following YAML manifests are designed. These manifests address the requirements for scalability, reliability, security, and sustainable deployment as well as future-proofing strategies.
+
+### Kubernetes Resources Selection:
+1. **Deployments vs Pods**: Deployments are preferred over standalone Pods to ensure WordPress and MySQL replicas can be managed automatically, supporting easy scaling and self-healing in case of failures.
+2. **Services**: Using Kubernetes Services provides a stable network address for each component, masking the complexity of the Pods behind them, which might scale up or down.
+
+### Security Strategy:
+- **Secrets**: Storing sensitive credentials like MySQL passwords in Kubernetes Secrets, which are then passed into containers via environment variables.
+- **Network Policies**: Restricting traffic between the WordPress and MySQL pods so only these two can communicate on the defined database port.
+
+### Handling High Traffic:
+- **Horizontal Pod Autoscaler (HPA)** would be used for the WordPress deployment to allow automatic scaling based on traffic demands.
+
+### Environmental Impact:
+- Considerations could include using more efficient node images, ensuring clusters are scaled down during low usage, or choosing cloud providers with strong green credentials.
+
+### Future-proofing:
+- By using Kubernetes and containerization, updates to WordPress and MySQL or the introduction of additional services can typically be managed through rolling updates, minimizing downtime.
+
+Here are the requisite YAML configurations for the deployment:
+
+```yaml
+# Secret for MySQL database credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+
+# Deployment and Service for MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+
+# Deployment and Service for WordPress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+
+# Horizontal Pod Autoscaler for WordPress
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+```
+
+This setup offers a scalable, secure, and manageable Kubernetes deployment for WordPress and MySQL, ensuring both immediate effectiveness and future adaptability.

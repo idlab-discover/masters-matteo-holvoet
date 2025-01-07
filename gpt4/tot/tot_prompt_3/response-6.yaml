@@ -1,0 +1,140 @@
+### Expert 1: Kubernetes Infrastructure Specialist
+
+**Step 1: Write Manifest for MySQL Deployment**
+- Thinking: MySQL database is crucial for storing WordPress data. Use a Deployment object for availability. Define Persistent Volume and Persistent Volume Claim for data persistency beyond the lifecycle of pods.
+  
+**Step 2: Share with Group**
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  selector:
+    matchLabels:
+      type: local
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password123
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+  
+**Expert 2: Cloud-Native Application Developer**
+
+**Step 1: Write Manifest for WordPress Deployment**
+- Thinking: WordPress needs to communicate with MySQL using environment variables for database credentials. Use a Deployment and Service for the WordPress application to be accessible over a network.
+
+**Step 2: Share with Group**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          value: password123
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+  type: LoadBalancer
+```
+  
+**Expert 3: DevOps Specialist**
+
+**Step 1: Evaluation of Manifests**
+- Thinking: Review the manifest for any configuration errors or improvements for an optimized and secure deployment. Check service types, deployment strategies, and volume configurations.
+
+**Expert Ratings**
+- Expert 1's MySQL Manifest: Score of 5 for using persistent storage correctly and securely exposing only necessary ports.
+- Expert 2's WordPress Manifest: Score of 4 for correct environment linking but should include readiness and liveness probes for better management.
+
+**Step 2: Share Ratings with Group**
+
+---
+
+**Analysis of Expert Inputs and Conclusion:**
+
+All experts have performed well in their respective fields, ensuring that the environments for both WordPress and MySQL are set up correctly for basic functionality. Expert 3's recommendations to include health checks (readiness and liveness probes) for the WordPress deployment can be an enhancement for another iteration.
+
+Considering all inputs, the combined solution that uses both Expert 1 and Expert 2’s manifests with the addition of recommendations for future improvements by Expert 3 provides a solid YAML configuration for deploying a WordPress website with a MySQL backend on Kubernetes.

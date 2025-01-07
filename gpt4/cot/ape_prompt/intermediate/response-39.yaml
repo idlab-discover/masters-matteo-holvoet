@@ -1,0 +1,171 @@
+Certainly! To deploy WordPress with a MySQL database on Kubernetes, you can use the following detailed steps to create the necessary YAML manifest files. We'll separate the workload into different components: a Deployment for MySQL, a Deployment for WordPress, and a few required services to allow network access and secrets for secure storage of credentials.
+
+### Step 1: MySQL Credentials as Secrets
+
+Initially, you would want to store MySQL credentials securely using Kubernetes Secrets. Here’s an example YAML for that:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+```
+
+Remember to replace `YOUR_BASE64_ENCODED_PASSWORD` with an actual base64 encoded password, which you can generate using:
+```bash
+echo -n "yourpassword" | base64
+```
+
+### Step 2: MySQL Deployment
+
+Next up is a MySQL deployment. Below is the YAML file for deploying your MySQL container.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+Here, the MySQL password is taken from the Kubernetes secret we created earlier.
+
+### Step 3: MySQL Service
+
+To expose MySQL within the cluster, use a Service.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 4: WordPress Deployment
+
+Now, we need a deployment configuration for WordPress, which connects to the MySQL database.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+```
+
+### Step 5: WordPress Service
+
+Finally, we create a service to expose WordPress to the outside world.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### PersistentVolumeClaims
+The `persistentVolumeClaim` (PVC) sections in MySQL and WordPress deployments assume you have corresponding PersistentVolume(PV) or dynamic provisioning set up in your cluster.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+This setup creates a WordPress site that uses MySQL as its database back-end, both managed within a Kubernetes environment. Adjust the configuration details such as passwords or storage sizes as per your needs.

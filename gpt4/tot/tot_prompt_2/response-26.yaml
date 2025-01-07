@@ -1,0 +1,151 @@
+```yaml
+# Expert 1:
+# Starting with the MySQL part of the setup, a Deployment and a PersistentVolumeClaim seem necessary to store MySQL data persistently.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: verystrongpassword
+        - name: MYSQL_DATABASE
+          value: wordpressdb
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          value: wordpresspassword
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+# Expert 2:
+# Now, I will move onto the WordPress part of the deployment, integrating a Service object to connect to the MySQL database properly and selecting the latest stable WordPress image.
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpresspassword
+        - name: WORDPRESS_DB_NAME
+          value: wordpressdb
+        ports:
+        - containerPort: 80
+
+# Expert 3:
+# Let's refine the MySQL Service and improve security by integrating Kubernetes secrets rather than hardcoding credentials in the manifest.
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  root_password: dmVyeXN0cm9uZ3Bhc3N3b3Jk   # Base64 encoded value "verystrongpassword"
+  database_password: d29yZHByZXNzcGFzc3dvcmQ=  # Base64 encoded value "wordpresspassword"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root_password
+        - name: MYSQL_DATABASE
+          value: wordpressdb
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: database_password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql     
+```
+
+In this simulation, each expert chimes in correctly, building upon and refining the previous expert's input while enhancing security, maintainability, and connectivity aspects of the deployment process.

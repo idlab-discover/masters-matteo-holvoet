@@ -1,0 +1,172 @@
+To deploy a WordPress website with MySQL as the backend, we can create two different deployments and a service for each deployment in a Kubernetes cluster. One deployment will be for the MySQL database and the other for the WordPress application itself.
+
+Let's start creating these YAML manifests:
+
+### 1. MySQL Deployment:
+
+We'll set a secret for storing the MySQL root password securely, then create a deployment for MySQL, and a service to expose MySQL inside the cluster.
+
+#### Secret for MySQL Password:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: [base64-encoded-password-here]
+```
+
+**Note**: Replace `[base64-encoded-password-here]` with your base64-encoded password. You can generate it using: `echo -n 'yourpassword' | base64`.
+
+#### MySQL Deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+#### MySQL Service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### 2. WordPress Deployment:
+
+Now, we need a deployment for WordPress and a service to expose it.
+
+#### WordPress Deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+```
+
+#### WordPress Service:
+
+We'll create a NodePort service to expose WordPress publicly.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    nodePort: 30080
+  selector:
+    app: wordpress
+  type: NodePort
+```
+
+### 3. PersistentVolumeClaims:
+
+You also need persistent storage for both MySQL and WordPress. Here are example PVCs:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Conclusion:
+
+This setup will create two deployments: one for MySQL with a secret to secure the database password, and one for WordPress with a NodePort service to access WordPress on the network. Replace secrets and PVCs as necessary to match your cluster's configuration. Also, ensure that the storage classes and volume sizes meet your needs. Adjusting `nodePort` under the service might be needed based on your cluster's available ports.

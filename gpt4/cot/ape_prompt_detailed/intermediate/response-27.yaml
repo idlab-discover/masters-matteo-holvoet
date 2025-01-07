@@ -1,0 +1,169 @@
+Sure, let's go through each component of the Kubernetes YAML manifest step by step.
+
+First, we create a ConfigMap to hold configuration data that can be used by both WordPress and MySQL.
+
+**1. ConfigMap (for MySQL and WordPress)**
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  MYSQL_DATABASE: wordpress
+  MYSQL_USER: wordpress_user
+```
+
+Next, let's handle secrets (like database password):
+
+**2. Secret (for MySQL password)**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: BASE64_ENCODED_PASSWORD
+```
+**Note:** Replace `BASE64_ENCODED_PASSWORD` with the actual base64 encoded password.
+
+Now, set up the MySQL deployment:
+
+**3. Deployment for MySQL**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: MYSQL_USER
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+**4. PersistentVolumeClaim for MySQL**
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+**5. Service for MySQL**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+For WordPress:
+
+**6. Deployment for WordPress**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: MYSQL_DATABASE
+        ports:
+        - containerPort: 80
+```
+
+**7. Service for WordPress**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+With these configurations:
+- **Secrets** are used to manage sensitive information like MySQL root password.
+- **ConfigMaps** help manage database names and user details.
+- The **PersistentVolumeClaim** ensures data persistence for MySQL.
+- **Services** help in networking, enabling the WordPress front-end to connect with the MySQL database via stable internal networking.
+
+Deploy this using `kubectl apply -f <filename>.yaml`.
+
+Adjust the storage settings, image versions, and resource requests as per your environment needs. This YAML configuration creates a simple and isolated WordPress setup on Kubernetes ideal for development and small production workloads.

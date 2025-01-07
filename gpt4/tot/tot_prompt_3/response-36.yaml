@@ -1,0 +1,126 @@
+### Step 1: Define the Kubernetes Deployment and Service for MySQL
+
+**Expert 1: Kubernetes Infrastructure Architect**
+- **Description of Step**: 
+  To begin, we will first define the MySQL deployment. We need a MySQL container running as a part of a Kubernetes Deployment. This setup will include defining the necessary volume for data persistence and also creating a Kubernetes Service to expose the MySQL instance internally.
+- **Thinking**: MySQL will require a persistent volume to ensure data persistence across pod restarts. Using a Deployment ensures that a desired number of replicas of MySQL are maintained. The Service will be ClusterIP type to allow communication from within the cluster.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: # Add a root password here 
+          - name: MYSQL_DATABASE
+            value: wordpress
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+**Expert 2: Kubernetes Application Developer**
+- **Description of Step**:
+  To configure the backend database, the MySQL service is vital. Starting with a Deployment managing the lifecycle of the MySQL pods is crucial. Ensuring that configuration details such as the MySQL version and environmental variables (like passwords and database user information) are correct ensures smooth operation of services.
+- **Thinking**: Configurations like the root password and database username will be stored in environment variables within the pod definition. The use of PVC ensures that any data stored in the database remains secure even if the pod crashes.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+**Expert 3: DevOps Engineer**
+- **Description of Step**:
+  Establishment of a MySQL database deployment includes setting up a deployment, a persistent volume claim, and a corresponding service. The use of environment variables for MYSQL root password and database names facilitates easy changes and possible configurations through CI/CD pipelines.
+- **Thinking**: The configuration focuses on security and efficiency, highlighting the importance of environment variables for sensitive information and utilizing PVC for data durability.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+          - containerPort: 3306
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: password
+        volumeMounts:
+        - name: mysql-pv-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-pv-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+### Peer Scoring:
+- **Expert 1 rates Expert 2 and 3**: Expert 2 - 5, Expert 3 - 4.5
+- **Expert 2 rates Expert 1 and 3**: Expert 1 - 4.5, Expert 3 - 4
+- **Expert 3 rates Expert 1 and 2**: Expert 1 - 4, Expert 2 - 5
+
+Feedback is given regarding the completeness of each YAML configuration and future-readiness by considering environments like secrets management. After reviewing, all experts move on to the next step of defining WordPress deployment and service.

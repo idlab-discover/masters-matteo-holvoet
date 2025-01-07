@@ -1,0 +1,138 @@
+```yaml
+# Expert 1 writes the initial manifest for MySQL Deployment with PVC:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+# Expert 2 acknowledges the good start and then adds the ConfigMap and Secret:
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: cGFzc3dvcmQ= # Base64 encoding of the desired password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp-config
+data:
+  HOST: mysql
+  NAME: wordpress
+  USER: root
+  PASSWORD: password
+
+# Expert 3 adds corrections and continues with the WordPress Deployment manifest:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: HOST
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: PASSWORD
+
+# Expert 1 proposes Service definitions for each application:
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: wordpress
+
+# Expert 2 observes that the manifest is complete and validates interaction:
+# "Looks like we covered all bases. Deployments for both Wordpress and MySQL are well-configured along with their services. Persistent data requirements and security aspects are properly addressed using Secrets and ConfigMaps. Great teamwork in integrating all those components in a systematic way!"
+```

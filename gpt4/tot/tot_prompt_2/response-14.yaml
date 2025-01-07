@@ -1,0 +1,113 @@
+```yaml
+# Expert 1
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wp-namespace
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wp-namespace
+type: Opaque
+data:
+  password: bXlzcWxwYXNzCg==  # Base64 encoded password (example: "mysqlpass")
+---
+# Expert 2
+# Acknowledging Expert 1's contribution and identifying missing elements.
+#
+# Starting to build the MySQL Deployment:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wp-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+
+---
+# Expert 3
+# Adding to Experts 1 and 2 by providing a Service for MySQL and beginning the WordPress deployment.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wp-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wp-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.wp-namespace.svc.cluster.local
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+
+---
+# Expert 1 (revisiting)
+# Complementing and finishing the deployment with a WordPress service, as suggested by previous details.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wp-namespace
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```

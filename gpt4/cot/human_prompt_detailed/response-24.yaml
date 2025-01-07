@@ -1,0 +1,133 @@
+Certainly! Below is a consolidated YAML file that contains all the previous components organized into a single document. This file includes definitions for ConfigMap, Secret, PersistentVolumeClaim, Deployments, and Services to set up WordPress and its MySQL database backend.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: wordpress-mysql
+  WORDPRESS_DB_CHARSET: utf8
+  WORDPRESS_DB_COLLATE: utf8_general_ci
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: bXlzcWwtcGFzc3dvcmQ=  # Replace `bXlzcWwtcGFzc3dvcmQ=` with your base64-encoded password
+  MYSQL_PASSWORD: bXlzcWwtdXNlci1wYXNz  # Replace `bXlzcWwtdXNlci1wYXNz` with your base64-encoded password
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_ROOT_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_ROOT_PASSWORD
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+  type: LoadBalancer
+```
+
+Keep in mind to replace the `MYSQL_ROOT_PASSWORD` and `MYSQL_PASSWORD` values in the secrets with base64-encoded strings of your actual secrets. Use the provided comments as a guide to customize the placeholders to your specific environment and security standards. Moreover, make sure to apply the YAML file to your Kubernetes cluster using the command `kubectl apply -f <filename>.yaml`.

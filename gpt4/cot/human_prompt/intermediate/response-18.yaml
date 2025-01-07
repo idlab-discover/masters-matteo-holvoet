@@ -1,0 +1,169 @@
+Creating a Kubernetes manifest file for deploying a WordPress website with a MySQL database backend involves setting up several resources. These include Deployments for running the containers, Services for networking, Persistent Volumes for data persistence, and Secrets for secure configuration. Below, I'll guide you through the creation of each part step by step using a YAML file.
+
+### Step 1: Define a Secret for MySQL Credentials
+
+Start by creating a secret to store the MySQL database credentials securely. 
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+```
+
+Replace `YOUR_BASE64_ENCODED_PASSWORD` with your actual base64-encoded MySQL password. You can encode your password in base64 by running:
+
+```bash
+echo -n 'yourpassword' | base64
+```
+
+### Step 2: MySQL Deployment
+
+Next, you need a deployment and a service for MySQL.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 3: PersistentVolumeClaim for MySQL
+
+To ensure data persists, define a PersistentVolumeClaim (PVC):
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Step 4: WordPress Deployment
+
+For WordPress, create a deployment and a service.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Step 5: PersistentVolumeClaim for WordPress
+
+Lastly, set up a PVC for WordPress:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+### Summary
+
+After assembling all pieces, you should deploy them in the following order:
+1. Secret
+2. MySQL PersistentVolumeClaim
+3. MySQL Deployment and Service
+4. WordPress PersistentVolumeClaim
+5. WordPress Deployment and Service
+
+This setup assumes the underlying cluster has a dynamic provisioner configured for `PersistentVolumeClaims` to automatically allocate necessary resources. Adjust specifics like image versions or storage requests as needed for your environment. Save these configurations in a YAML file and apply them via `kubectl apply -f <filename>.yaml`.

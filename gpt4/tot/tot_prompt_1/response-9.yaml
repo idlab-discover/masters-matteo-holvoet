@@ -1,0 +1,134 @@
+Expert 1: First, we should create a MySQL Deployment. This will manage the MySQL container. We should also include a PersistentVolumeClaim (PVC) to ensure data persistence for the MySQL database.
+
+Expert 2: Agreed, but we should remember to define environment variables for MySQL like MYSQL_ROOT_PASSWORD for security purposes. This is critical for secure database access.
+
+Expert 3: Absolutely. After setting up the MySQL deployment, we should also consider creating a separate Deployment for WordPress. This deployment should connect to the MySQL instance using environment variables derived from the MySQL deployment.
+
+---
+
+**Step 1: MySQL Deployment & PVC**
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: your-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+Expert 1: Now, let's start on the WordPress deployment. We should use the WordPress official image and ensure the WordPress container connects to MySQL using the correct environment variables.
+
+Expert 2: Correct, and let's add a PersistentVolumeClaim for WordPress as well, so any data like media uploads are also preserved.
+
+Expert 3: Additionally, we need to create a Service for each deployment to expose them, particularly the WordPress one, which might need to be available on the Internet.
+
+---
+
+**Step 2: WordPress Deployment & Services**
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          value: your-password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+All experts agree on the approach and validate their shared YAML manifests. They each have contributed to ensuring the deployment is robust, considering important aspects like persistence, connectivity, and exposure.

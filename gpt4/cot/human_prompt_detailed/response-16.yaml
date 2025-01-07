@@ -1,0 +1,173 @@
+Absolutely! Here's a consolidated YAML file that encompasses all the components needed to deploy WordPress with a MySQL database in Kubernetes, including secrets, config maps, deployments, persistent volume claims, and services. 
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  mysql-password: <BASE64_ENCODED_PASSWORD>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-configmap
+data:
+  mysql-user: "wordpress"
+  mysql-database: "wordpress"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.6
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-configmap
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-configmap
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-configmap
+data:
+  wordpress-db-host: "mysql"
+  wordpress-db-name: "wordpress"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wordpress-secret
+type: Opaque
+data:
+  wordpress-db-password: <BASE64_ENCODED_PASSWORD>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-configmap
+              key: wordpress-db-host
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-configmap
+              key: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: wordpress-db-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-configmap
+              key: wordpress-db-name
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Notes:
+1. **Base64 Encoding**: Replace `<BASE64_ENCODED_PASSWORD>` with the actual Base64 encoded password for both MySQL and WordPress.
+2. **Security Best Practices**: Note that storing sensitive information in manifests (even in Base64 form) is not recommended for production environments. Consider using a secret manager.
+3. **Persistent Volumes**: Depending on your Kubernetes environment setup (like Minikube, AWS EKS, GKE, etc.), you might need to configure PersistentVolume or adjust settings in PersistentVolumeClaim for storage support.
+4. **Namespace and Context**: Ensure this is deployed in the correct namespace and Kubernetes cluster context. Use namespace specifications if required.
+5. **Wordpress Image**: You might want to pin the WordPress image to a specific version instead of using `latest` to ensure compatibility and prevent unintended updates.

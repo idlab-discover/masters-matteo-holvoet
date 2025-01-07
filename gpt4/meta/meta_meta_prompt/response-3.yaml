@@ -1,0 +1,176 @@
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-ns
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-ns
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pv-claim
+  namespace: wordpress-ns
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-ns
+type: Opaque
+data:
+  password: <base64-encoded-password>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-ns
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wp-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-ns
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+```
+
+### Explanation and Interactions:
+
+1. **Namespace (`wordpress-ns`)**: Isolates the WordPress environment from other applications within the cluster.
+2. **Persistent Volumes and Claims**: Provide persistent storage for both the MySQL and WordPress pods. Data will not be lost if the pods reboot.
+3. **Secret (`mysql-pass`)**: Used to store the MySQL root password securely.
+4. **Deployments (`mysql` and `wordpress`)**: These describe the desired states of the WordPress site and the MySQL database, ensuring they are deployed and maintained properly.
+5. **Services**: Define how the MySQL and WordPress pods communicate:
+   - The MySQL service is headless (`clusterIP: None`), useful for stable network identities.
+   - The WordPress service is exposed externally via a `LoadBalancer`, allowing traffic to reach the site.
+6. **Horizontal Pod Autoscaler (`wordpress-hpa`)**: Automatically scales the WordPress deployment based on CPU utilization.
+
+### Potential Challenges and Mitigations:
+
+1. **Security**: The use of Kubernetes secrets doesn't fully secure sensitive data since they are base64 encoded, not encrypted. Consider using third-party tools like HashiCorp Vault for enhanced security.
+2. **Data Loss**: Ensure regular backups of the MySQL database to avoid catastrophic data loss. Implement a robust backup solution that supports automatic and frequent backups.
+3. **Performance Bottlenecks**: Monitor the MySQL database performance as it might become a bottleneck, especially under high load. Consider read replicas or sharding if necessary.
+4. **Cost Management**: While auto-scaling helps manage load, it can also lead to unexpected costs if not monitored closely. Set appropriate resource limits and alerts to manage expenses.
+
+This configuration aims to create a robust and scalable WordPress deployment with considerations for security, data persistence, and operational efficiency.

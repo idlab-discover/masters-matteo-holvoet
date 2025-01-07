@@ -1,0 +1,162 @@
+Below is a simple example of a Kubernetes YAML manifest that deploys a WordPress website using a MySQL database as its backend. In Kubernetes, we typically use Deployments to manage and deploy stateless applications like WordPress, and StatefulSets or similar resources for stateful applications like databases. We will also use a Kubernetes Service to expose both the WordPress and MySQL to internal network, and the WordPress to the external network via NodePort (as an example, typically you might use an Ingress for production).
+
+### Step-by-step Kubernetes YAML manifest:
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: cm9vdF9zZWNyZXQK  # Base64 encoded "root_secret"
+  MYSQL_PASSWORD: d29yZHByZXNzX3Bhc3MK  # Base64 encoded "wordpress_pass"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_PASSWORD
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    nodePort: 30080
+  selector:
+    app: wordpress
+```
+
+### Explanation:
+
+1. **Secret:** We start by defining a Kubernetes Secret (`mysql-pass`) to hold sensitive data such as the MySQL root password and WordPress database password. These are base64 encoded.
+
+2. **PersistentVolumeClaims (PVCs):** Defined for both MySQL and WordPress to ensure that the data persists across pod recreations.
+
+3. **MySQL Deployment:** Uses MySQL image, pulls environment variables from the secret, and mounts the PVC for data persistency.
+
+4. **MySQL Service:** Exposes the MySQL deployment within the cluster (not externally accessible by default).
+
+5. **WordPress Deployment:** Configures the WordPress container, connects it to the MySQL service for the backend, and mounts the PVC for persistent storage.
+
+6. **WordPress Service:** Exposes the WordPress website to external traffic by assigning it a NodePort (this opens the site to the internet, reachable via any of the Kubernetes node IPs on port 30080).
+
+This set-up is a primary blueprint; depending on the use case, you might also want to consider additional security measures, scalability settings, logging, monitoring strategies, and more. Always ensure these configurations align with your operational requirements and best practices.

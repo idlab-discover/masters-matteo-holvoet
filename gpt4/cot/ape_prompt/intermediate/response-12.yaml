@@ -1,0 +1,170 @@
+To create a Kubernetes deployment for a WordPress website with a MySQL database, you'll need to set up several components:
+
+1. **Persistent Volume (PV)** and **Persistent Volume Claim (PVC)**: These are required to ensure that the data stored in the MySQL database persists across pod restarts.
+2. **Secrets**: Used to store sensitive data like database passwords.
+3. **Deployments**: Manage the lifecycle of the pods (MySQL and WordPress).
+4. **Services**: Provide stable network IP addresses and DNS names to connect the WordPress application with the MySQL database.
+
+### Step 1: Create Persistent Volumes and Claims
+
+Persistence is key for a database to ensure data is not lost when a container stops. Below, I'll provide an example of PVC declarations.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 2: Create a Secret for MySQL Credentials
+
+This step involves creating a Kubernetes Secret object that will store the MySQL database credentials.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-password>
+```
+
+Replace `<base64-encoded-password>` with your actual base64 encoded password. Use a command like `echo -n 'yourpassword' | base64` to get the base64 value.
+
+### Step 3: Create Deployments
+
+Below are the YAML configurations for the MySQL and WordPress deployments.
+
+#### MySQL Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.6
+        args: ["--ignore-db-dir=lost+found"]  # MySQL does not handle this directory well
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-root-password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+#### WordPress Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-root-password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+### Step 4: Create Services
+
+Finally, you need to expose these deployments with Services.
+
+#### MySQL Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+#### WordPress Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+This completes the Kubernetes YAML manifests required to deploy a WordPress site with a MySQL backend on Kubernetes. Adjust the `mysql-root-password` with your own secure password, and you're good to go. Make sure your cluster has the resources to accommodate the storage and handles Persistent Volumes appropriately if you're doing this in a production or staging environment.

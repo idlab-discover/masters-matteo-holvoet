@@ -1,0 +1,117 @@
+```yaml
+# Expert 1: Initial manifest creation
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+This basic setup gets a WordPress container up, considering the database credentials will be fetched from a secret named `mysql-pass`. We must also ensure the MySQL deployment and the secret where the database password is stored. 
+
+```yaml
+# Expert 2: Adding MySQL deployment and corrections
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+I added the MySQL deployment and its corresponding service, making sure it uses the same secret `mysql-pass`. Note that a `ClusterIP` service type default would suffice since we don't need external access to the MySQL database. This integration should address the connectivity between WordPress and MySQL using Kubernetes networking.
+
+```yaml
+# Expert 3: Adding the Secret definition and final touches
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+```
+Here, I added the Secret manifest needed for the password management of MySQL, which both containers are dependent on. Be sure to replace `YOUR_BASE64_ENCODED_PASSWORD` with the actual base64 encoded password. It's vital to keep security in mind by encoding sensitive information such as passwords in base64 when using Kubernetes Secrets.
+
+The full Kubernetes configuration now properly sets up WordPress with MySQL backend within a defined namespace, ensuring component communication remains internal and secure by correct use of Kubernetes DNS for service names, and environment variables for WordPress.

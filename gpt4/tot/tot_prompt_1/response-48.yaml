@@ -1,0 +1,103 @@
+```yaml
+# Expert 1: Step 1 - Define API version and kind for MySQL deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: my-password
+
+# Expert 2: Step 1 - Define API version and kind for MySQL Service to expose MySQL to other pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+
+# Expert 3: Step 1 - Define API version and kind for WordPress deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              value: my-password
+```
+
+```yaml
+# Expert 1: Step 2 - Add Persistent Volume Claim for MySQL data preservation
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+# Expert 2: Step 2 - Define API version and kind for PersistentVolume and PersistentVolumeClaim for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+# Expert 3: Step 2 - Define API version and kind for WordPress Service to provide network access to WordPress
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+
+```yaml
+# Expert 1: Step 3 - Experts 1, 2, and 3 confirm correctness of each manifest and make necessary adjustments for environment vars and resource limits.
+
+# Expert 2: Step 3 - Experts 1, 2, and 3 confirm readiness probes for the containers to ensure pods are healthy and running as expected.
+
+# Expert 3: Step 3 - Experts 1, 2, and 3 adjust labels and annotations for better resource tracking and management. Add versioning and metadata for rollback and auditing.
+```

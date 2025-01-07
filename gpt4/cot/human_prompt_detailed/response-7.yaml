@@ -1,0 +1,132 @@
+Certainly! Below is a complete Kubernetes YAML file that includes all the necessary components to deploy a WordPress website with a MySQL backend, wrapped properly in YAML code blocks for proper formatting.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: dGhpc2lzbXlwYXNzd29yZA==  # Example: 'thisismypassword' Base64 encoded
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  my.cnf: |
+    [mysqld]
+    sql-mode="STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+            - name: mysql-config-volume
+              mountPath: /etc/mysql/conf.d
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+        - name: mysql-config-volume
+          configMap:
+            name: mysql-config
+            items:
+              - key: my.cnf
+                path: my.cnf
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_USER
+              value: root
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      nodePort: 30080
+  selector:
+    app: wordpress
+```
+
+This YAML file includes a secret for the MySQL password, a config map for MySQL specific configurations, a persistent volume claim for MySQL's data storage, deployments and services for both MySQL and WordPress, and exposes WordPress on port `30080`. This setup uses a node port to make WordPress accessible from outside the cluster, which is good for development but in a production environment you might use an Ingress or a load balancer. Adjust and scale configurations as necessary based on your specific needs.

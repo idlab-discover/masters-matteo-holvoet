@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-secret
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+data:
+  my.cnf: '[mysqld]
+
+    sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES
+
+    '
+kind: ConfigMap
+metadata:
+  name: mysql-config
+---
+apiVersion: v1
+data:
+  password: c3VwZXJzZWNyZXRwYXNzd29yZA==
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-secret
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+Expert 1: Created base Deployment and PVC for MySQL. Ensured Deployment uses a label
+  selector for MySQL and mounts the claimed persistent volume for data storage.
+Expert 2: Added a ConfigMap for customizing MySQL settings and elaborated on MySQL
+  service setup. Needs networking facilitation to ensure that WordPress can reach
+  MySQL.
+Expert 3: Added Secret handling for MySQL to store sensitive data securely and finished
+  with the WordPress deployment configuration and service, ensuring WordPress can
+  serve requests externally via a LoadBalancer.
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer

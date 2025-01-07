@@ -1,0 +1,143 @@
+```yaml
+# Expert 1 starts with the MySQL deployment and PVC configuration
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+
+# Expert 2 continues by adding the ConfigMap for MySQL
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  my.cnf: |
+    [mysqld]
+    sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES
+
+---
+
+# Expert 3 adds the Secret for MySQL
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: c3VwZXJzZWNyZXRwYXNzd29yZA==  # Base64 encoded password ("supersecretpassword")
+
+---
+
+# Expert 1 introduces the WordPress deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+
+---
+
+# Expert 2 adds and describes the service for MySQL
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+
+# Expert 3 wraps up by adding the service for WordPress and describes the connectivity
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+# Explanation
+Expert 1: Created base Deployment and PVC for MySQL. Ensured Deployment uses a label selector for MySQL and mounts the claimed persistent volume for data storage.
+Expert 2: Added a ConfigMap for customizing MySQL settings and elaborated on MySQL service setup. Needs networking facilitation to ensure that WordPress can reach MySQL.
+Expert 3: Added Secret handling for MySQL to store sensitive data securely and finished with the WordPress deployment configuration and service, ensuring WordPress can serve requests externally via a LoadBalancer.
+```

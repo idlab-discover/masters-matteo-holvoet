@@ -1,0 +1,121 @@
+Certainly! Below is a combined YAML file containing all the necessary Kubernetes resources to deploy a WordPress website with a MySQL database. This includes the setup of persistent volumes (using claims), deployments, secrets, and services.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: BASE64_ENCODED_PASSWORD  # Replace BASE64_ENCODED_PASSWORD with your base64-encoded password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # This makes it a headless service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql  # This should match the MySQL service name
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Instructions:
+
+1. **Edit the Base64 Encoded Password**: Replace `BASE64_ENCODED_PASSWORD` with your own MySQL root password in base64 format.
+
+2. **Deployment**: To deploy this setup to your Kubernetes cluster, save the above content into a file (e.g., `wordpress-mysql-deployment.yaml`) and use the command:
+
+   ```bash
+   kubectl apply -f wordpress-mysql-deployment.yaml
+   ```
+
+3. **Check on Deployments**: Ensure your resources are correctly deployed by running `kubectl get pods` and `kubectl get svc` to see the status of pods and services.
+
+This configuration is suitable for basic deployments and serves well for learning and development environments. For production environments, consider additional security measures, configuration adjustments, and resource optimizations.

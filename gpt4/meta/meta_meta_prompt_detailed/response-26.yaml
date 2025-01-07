@@ -1,0 +1,168 @@
+Here is a Kubernetes configuration that meets the specifications outlined in the prompt:
+
+```yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: wordpress-mysql
+  WORDPRESS_DB_PORT: "3306"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: <base64-encoded-password>
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql
+spec:
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        livenessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 45
+          periodSeconds: 10
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata: 
+  name: wordpress-mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: wordpress-mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_PORT
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Explanation
+
+1. **ConfigMap & Secret**: The `ConfigMap` stores non-sensitive data like database host and port which is accessed by the WordPress deployment. For sensitive data like database passwords, a `Secret` is used, which stores the password in an encoded format.
+
+2. **PersistentVolumeClaim (PVC)**: This claim is used by MySQL to ensure data persistence across Pod failures, which is crucial for database integrity and continuity.
+
+3. **MySQL Deployment**: Employing a single-replica set initially but utilizes a strategy of `Recreate` to avoid having more than one instance using the same volume at a time. This deployment mounts the `PersistentVolumeClaim` to store database data perpetually.
+
+4. **MySQL Service**: Defined with a `ClusterIP` of None, making it a headless service that allows direct Pod access, beneficial for the Stateful applications where you might need stable network identifiers.
+
+5. **WordPress Deployment**: Scaled with multiple replicas for high availability. The deployment includes both readiness and liveness probes, crucial for maintaining the service’s health by checking the main page's availability.
+
+6. **WordPress Service**: Exposed externally using a `LoadBalancer`, which aids in distributing incoming traffic among all the replicas of the WordPress pods. This is pivotal during traffic surges, ensuring the load is managed efficiently across the instances.
+
+### Scenario Considerations:
+
+- **Traffic Surge**: The LoadBalancer efficiently distributes the load across multiple WordPress pods to manage increased traffic, preventing any single pod from becoming a bottleneck. This ensures availability and responsiveness.
+
+- **Node Failure**: On a node failure, Kubernetes controller ensures the pods are rescheduled on the available nodes. Persistent volumes attached to MySQL ensure that no data is lost in such events, and the `Recreate` strategy makes sure the DB consistency is maintained without conflicts.
+
+This configuration provides both high availability and consistent performance for hosting a robust WordPress website, leveraging Kubernetes' features efficiently.

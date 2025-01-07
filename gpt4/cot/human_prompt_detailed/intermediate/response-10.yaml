@@ -1,0 +1,157 @@
+Certainly! Below you'll find a comprehensive Kubernetes YAML manifest to deploy a WordPress website with a MySQL database backend, following step-by-step specifications including ConfigMaps, Secrets, Deployments, PersistentVolumeClaims, and Services.
+
+### Step 1: ConfigMaps and Secrets
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  MYSQL_HOST: mysql
+  MYSQL_PORT: "3306"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: "YWRtaW5QYXNz"  # This is "adminPass" Base64 encoded
+
+```
+
+### Step 2: Deployments
+
+#### MySQL Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+```
+
+#### WordPress Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: MYSQL_HOST
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+```
+
+### Step 3: Services
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Explanation
+
+1. **ConfigMaps and Secrets**:
+   - This manifest uses a ConfigMap to define the MySQL host and port. It uses a Secret to securely store the MySQL root password.
+   
+2. **MySQL Deployment & PVC**:
+   - The MySQL container uses the `mysql:5.7` image and mounts a volume using a PersistentVolumeClaim (PVC) for persistent storage.
+
+3. **WordPress Deployment**:
+   - The WordPress container uses the `wordpress:latest` image and connects to the MySQL instance using environment variables populated from the ConfigMap and Secret.
+
+4. **Services**:
+   - Two services are defined: one internal ClusterIP service for MySQL and one LoadBalancer service for WordPress, making WordPress accessible from outside the cluster.
+
+This setup is quite scalable and maintains good separation of concerns by utilizing Kubernetes best practices for resource management and security with ConfigMaps and Secrets.

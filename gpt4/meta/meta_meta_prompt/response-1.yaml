@@ -1,0 +1,148 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: rootpassword
+        ports:
+          - containerPort: 3306
+        volumeMounts:
+          - name: mysql-storage
+            mountPath: /var/lib/mysql
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+          - name: WORDPRESS_DB_HOST
+            value: mysql
+          - name: WORDPRESS_DB_PASSWORD
+            value: rootpassword
+        ports:
+          - containerPort: 80
+        volumeMounts:
+          - name: wordpress-storage
+            mountPath: /var/www/html
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 1
+            memory: 1Gi
+      volumes:
+        - name: wordpress-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  type: LoadBalancer  # Provides load balancing and high availability
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: wordpress
+```
+
+Explanation of the Kubernetes YAML manifest:
+
+1. **Persistent Storage**: PersistentVolumeClaims (PVC) are used for both MySQL and WordPress to ensure that data persists across pod restarts. The choice of PVCs allows for easier management and compatibility with various cloud-provider storage backends, making the solution flexible and scalable.
+
+2. **Resource Limits/Requests**: Each container has defined resource requests and limits. Resource limits prevent over-usage under heavy load, helping maintain cluster stability and performance. The requests ensure that the scheduler allocates enough resources for the containers to perform under normal conditions.
+
+3. **Scaling and High Availability**: The WordPress deployment is configured with three replicas, ensuring high availability and load distribution. The use of a LoadBalancer type service for WordPress ensures that traffic is evenly distributed among the pods. MySQL uses a single instance with a `Recreate` deployment strategy, ensuring that only one instance handles data at a time, which is typical for stateful applications that handle data persistence.
+
+4. **Security Contexts**: These can be added to further tighten security, such as defining `runAsUser` and `runAsGroup` to control privileges. These settings help mitigate risks by preventing privileged access within the containers.
+
+5. **Horizontal vs. Vertical Scaling**: This manifest uses horizontal scaling (increasing pod replicas) for WordPress to better handle changes in load by distributing traffic across multiple instances. Horizontal scaling typically offers better fault tolerance and scalability than vertical scaling, which just increases the resources available to existing pods. However, horizontal scaling might introduce complexity in session management and load balancing, which can be managed by additional configurations and Kubernetes native resources like ingress controllers. 
+
+This Kubernetes setup offers a robust foundation for a WordPress site backed by MySQL, considering performance, scalability, availability, and security.

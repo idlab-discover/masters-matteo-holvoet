@@ -1,0 +1,164 @@
+### Expert 1: Kubernetes Developer
+
+**Step 1: Define MySQL Deployment YAML**
+
+Thinking Process:
+- Firstly, a MySQL container named "mysql" needs to be deployed. It is crucial to define a Deployment object for high availability and management features.
+- A Persistent Volume Claim (PVC) is necessary for data persistence across container restarts.
+- Setting MySQL related environment variables and using Secrets for sensitive information like passwords is a good security practice.
+- It is important to define resource requests and limits to ensure the pod receives the necessary resources and doesn't consume excessive cluster resources.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+**Step 2: Define WordPress Deployment YAML**
+
+Thinking Process:
+- A WordPress instance needs to be connected to the previously created MySQL database.
+- Environment variables will specify the MySQL service name and credentials.
+- A PVC for WordPress will store uploaded content reliably.
+- Proper resource definition is crucial just as with the MySQL deployment.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+**Step 3: Define Kubernetes Services**
+
+Thinking Process:
+- Define services for MySQL and WordPress to enable stable internal network communication within the cluster.
+- The MySQL service should not be exposed outside, thus a ClusterIP service is the right choice.
+- WordPress needs to be accessible via the web, employing a LoadBalancer service will make it publicly accessible.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+#### Scoring:
+As an expert and from my review of this setup, I score this comprehensive approach with a 5 because it correctly applies Kubernetes best practices, including the use of a secret for sensitive data, resource management, and persistent data storage management which is key for both MySQL and WordPress. This setup should work seamlessly for deploying a WordPress site backed by a MySQL database in a Kubernetes environment.

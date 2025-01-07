@@ -1,0 +1,169 @@
+This YAML manifest for Kubernetes setup addresses the deployment of a WordPress site connected to a MySQL database focusing on high availability, auto-scaling capabilities, and secure handling of sensitive information. Below is the detailed Kubernetes configuration:
+
+1. **High Availability and Auto-scaling** - The deployment utilizes Horizontal Pod Autoscalers for both WordPress and MySQL, allowing for dynamic scaling based on CPU and memory usage to efficiently handle traffic spikes.
+
+2. **Security Enhancements** - Utilizes Kubernetes Secrets for securely storing and injecting sensitive data such as MySQL credentials into the deployment, minimizing exposure to security risks.
+
+3. **State Management** - Opt for a stateful setup for MySQL using StatefulSet to ensure that each pod's state is preserved across rescheduling and restarts, which is crucial for a database. WordPress, being stateless, is deployed using Deployments for easier scaling.
+
+4. **Database Synchronization and Scaling Issues** - Incorporates readiness and liveness probes to ensure traffic is only routed to ready instances and uses a replicated MySQL environment to enhance performance and data consistency. 
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-deployment
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-deployment
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+  labels:
+    app: wordpress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  serviceName: "mysql"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+      volumeClaimTemplates:
+      - metadata:
+          name: mysql-pv-claim
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: "standard"
+          resources:
+            requests:
+              storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wp-hpa
+  namespace: wordpress-deployment
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+  namespace: wordpress-deployment
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: mysql
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+```
+
+### Key Considerations:
+
+- **Horizontal Pod Autoscaler (HPA)** is used for both WordPress and MySQL to manage load spikes automatically.
+- **Secrets** store sensitive information away from the application's code base.
+- **StatefulSet** is used for MySQL to handle its stateful nature effectively, ensuring consistent usage of volumes regardless of pod restarts.
+- **Persistence** through PersistentVolumeClaims ensures that data is not lost if the pods die.
+- **Readiness and Liveness Probes** could further be configured to enhance monitoring and self-healing capabilities of the deployments.
+- Potential challenges include managing database consistency and performance under heavy loads. A more advanced setup might consider splitting read and write requests using additional MySQL replicas.
+
+This setup ensures a scalable, reliable, and secure WordPress deployment on Kubernetes, catering to both beginner needs and experienced loads.

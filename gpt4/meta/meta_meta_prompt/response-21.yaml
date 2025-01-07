@@ -1,0 +1,197 @@
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YWRtaW5wYXNzd29yZA==  # base64-encoded password (example: "adminpassword")
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-database-access
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app: wordpress
+            tier: frontend
+      ports:
+      - protocol: TCP
+        port: 3306
+```
+
+### Explanation of the YAML Components:
+1. **Secrets:** Utilize Kubernetes secrets to securely store and manage sensitive data like the MySQL password.
+
+2. **PersistentVolumeClaim (PVC):** Declare PVCs for MySQL and WordPress for persistent storage to ensure data is retained across pod recreation and system updates.
+
+3. **Deployments and Services:**
+   - **MySQL Deployment:** Set to recreate strategy to manage updates or configuration changes without downtime.
+   - **WordPress Deployment:** Use a rolling update strategy to achieve zero-downtime updates and dynamically scale with traffic.
+   - **Services** bind Pods to a stable network endpoint, enabling inbound connections.
+
+4. **Horizontal Pod Autoscaler (HPA):** Automatically scale the number of WordPress pods based on CPU utilization, ensuring performance under load.
+
+5. **Network Policy:** Restrict traffic only from WordPress to MySQL, enhancing the security by limiting access.
+
+This comprehensive Kubernetes manifest setup meets the requirements for security, scalability, maintainability, and cost-effectiveness while providing a resilient and efficient WordPress deployment structure.

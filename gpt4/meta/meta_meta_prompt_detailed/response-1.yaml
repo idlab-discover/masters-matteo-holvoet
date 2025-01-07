@@ -1,0 +1,183 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-setup
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-setup
+type: Opaque
+data:
+  password: <base64-encoded-password>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: wordpress-setup
+data:
+  my.cnf: |
+    [mysqld]
+    sql_mode=NO_ENGINE_SUBSTITUTION
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-setup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-setup
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-setup
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-setup
+data:
+  wp-config.php: |
+    <?php
+    define('DB_NAME', 'wordpress');
+    define('DB_USER', 'root');
+    define('DB_PASSWORD', 'password');
+    define('DB_HOST', 'mysql');
+    define('DB_CHARSET', 'utf8');
+    define('DB_COLLATE', '');
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-setup
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-config-volume
+          mountPath: /var/www/html/wp-config.php
+          subPath: wp-config.php
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      volumes:
+      - name: wordpress-config-volume
+        configMap:
+          name: wordpress-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-setup
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+This YAML orchestration script includes several best practices:
+- **Namespacing**: Helps to isolate the WordPress instance in the cluster.
+- **Secret Management**: Uses Kubernetes secrets to store MySQL password.
+- **Configuration Management**: Deploys WordPress and MySQL configurations via ConfigMaps ensuring non-sensitive configuration data is handled properly and can be altered without touching deployment scripts.
+- **Persistent Data**: Ensures MySQL data persists beyond the lifecycle of pods through PersistentVolumeClaims.
+- **Resource Requests and Limits**: Helps in Kubernetes CPU and memory allocation efficiently, enabling smoother scaling and operational stability.
+- **Services**: MySQL uses a headless service for stable network identity, whereas WordPress is exposed externally through a LoadBalancer service allowing outside world access.
+- **Deployment Strategy**: MySQL uses the 'Recreate' strategy to avoid conflicts between old and new pods during updates. 
+
+Each decision is tailored to facilitate maintenance, ensure security, and enable scalable, stable deployments. This configuration will simplify handling an increase in web traffic, update processes, and potential multi-regional deployments.

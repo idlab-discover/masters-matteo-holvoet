@@ -1,0 +1,162 @@
+Sure, setting up WordPress with a MySQL backend in Kubernetes requires several components. We'll need to create deployments for both WordPress and MySQL, as well as PersistentVolume (PV) and PersistentVolumeClaim (PVC) definitions to store data, and we will need Secrets to securely handle credentials. We will also need Services to expose these deployments. Here’s a step-by-step Kubernetes YAML manifest setup.
+
+### Step 1: Create a Secret for MySQL Credentials
+Firstly, you need to create a Secret to securely store the MySQL database credentials, which WordPress will use to access the database.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  mysql-root-password: YOUR_BASE64_ENCODED_PASSWORD
+  mysql-password: YOUR_BASE64_ENCODED_PASSWORD
+```
+
+**Note:** Ensure you replace `YOUR_BASE64_ENCODED_PASSWORD` with your own base64 encoded password. You can create a base64 encoded password with the command: `echo -n "yourpassword" | base64`.
+
+### Step 2: MySQL Deployment
+Next, set up the MySQL Deployment. This Deployment will use the Secret created above.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+### Step 3: MySQL PersistentVolumeClaim
+The MySQL database will need storage to persist data. You need to create a PersistentVolumeClaim for this.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+### Step 4: MySQL Service
+Create a Service to expose MySQL within the cluster:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 5: WordPress Deployment
+Now, set up the WordPress Deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+### Step 6: WordPress PersistentVolumeClaim
+Here’s the PVC for WordPress:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Step 7: WordPress Service
+Finally, create a Service to expose WordPress to the internet (normally you would use an Ingress here, but for simplicity, we use LoadBalancer type Service):
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  type: LoadBalancer
+  selector:
+    app: wordpress
+```
+
+This YAML configuration sets up a WordPress site with a MySQL database, utilizing persistent storage and secure handling of credentials. Deploy each of these components in your Kubernetes cluster to get the WordPress site up and running. Ensure you test this in a safe environment before deploying it in a production setting.

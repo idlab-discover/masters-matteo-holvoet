@@ -1,0 +1,154 @@
+Certainly! Below is a step-by-step explanation for creating a Kubernetes YAML manifest file to deploy a WordPress website with a MySQL database in the backend.
+
+### Step 1: Create a Secret for MySQL Credentials
+
+We start by defining a Kubernetes Secret to securely store the password for MySQL access. It’s important for security reasons to keep credentials encrypted in Secrets rather than keeping them as plaintext in ConfigMaps or Pod definitions.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: <your-base64-encoded-password>
+```
+
+*Note*: You must replace `<your-base64-encoded-password>` with your actual MySQL password encoded in Base64. You can generate a Base64 encoded string via command line using `echo -n "yourpassword" | base64`.
+
+### Step 2: Define ConfigMap for MySQL Configuration
+
+Create a ConfigMap that stores configuration data for MySQL.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  mysql_root_password: password
+```
+
+### Step 3: MySQL Deployment and PersistentVolumeClaim
+
+Create a Deployment for MySQL. Use a PersistentVolumeClaim (PVC) for data persistence.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Step 4: MySQL Service
+
+Create a Service for the MySQL Deployment. This allows the WordPress container to communicate with MySQL.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 5: WordPress Deployment
+
+Deploy WordPress using the necessary configuration variables and linking to the MySQL service.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+```
+
+### Step 6: WordPress Service
+
+Define a service for the WordPress deployment to expose it externally.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+This complete manifest sets up WordPress and MySQL with persistent data storage, managed configurations via ConfigMaps and Secrets, and appropriate networking setup. Ensure you apply these definitions into your Kubernetes cluster with the `kubectl apply -f <filename>.yaml` command. Make sure to replace placeholder values in the example (like the MySQL password) with actual secure credentials.

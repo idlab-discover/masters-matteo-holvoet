@@ -1,0 +1,176 @@
+### Deployment Architecture for WordPress with MySQL on Kubernetes
+
+#### Overview:
+The architecture includes:
+- **WordPress Deployment**: Scalable WordPress application containers.
+- **MySQL StatefulSet**: To manage MySQL databases with stability and persistence.
+- **Persistent Volumes**: To handle data storage needs, which ensures data is not lost when pods are restarted or rescheduled.
+- **Secrets**: To manage sensitive data like database credentials.
+- **ConfigMaps**: To manage WordPress configuration settings.
+- **Services**: To expose the applications within the cluster and optionally to the outside world.
+- **Network Policies**: To secure communication between containers.
+
+#### YAML Manifests:
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: {BASE64_ENCODED_PASSWORD}
+  MYSQL_USER: {BASE64_ENCODED_USER}
+  MYSQL_PASSWORD: {BASE64_ENCODED_PASSWORD}
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  clusterIP: None
+  selector:
+    app: mysql
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+```
+
+#### Justifications and Trade-offs:
+1. **MySQL StatefulSet with Multiple Replicas**: Provides a reliable solution for data management with failover capabilities and persistent storage. This increases resource usage, but is essential for availability and data safety.
+
+2. **Secrets Management**: Ensures that database credentials are not exposed in plain text, which is critical for security.
+
+3. **Persistent Volumes**: Ensure that data persists across pod restarts and migrations, critical for both WordPress and MySQL data.
+
+4. **Horizontal Scaling of WordPress**: Allows for handling increased load by scaling the number of pods horizontally. This might increment cost but provides better handling of load spikes.
+
+5. **Load Balancer for WordPress Service**: Exposes WordPress service to the public, balancing traffic across pods. Increases cost but essential for real-world accessibility.
+
+6. **Network Policies (not added in the manifest above)**: Recommended to further restrict communication between pods/services to only necessary traffic, enhancing security.
+
+The chosen architecture attempts to balance between cost, scalability, availability, and security. Alternative approaches could involve using a managed database service to reduce the management overhead and possibly enhance performance and scalability but would increase costs and reduce control over the database environment.

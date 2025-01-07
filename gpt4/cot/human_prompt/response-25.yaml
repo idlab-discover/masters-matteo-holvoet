@@ -1,0 +1,135 @@
+Certainly! Here is a consolidated YAML document that orchestrates the deployment of WordPress and MySQL on Kubernetes, including the persistent volume claims, deployments, and services. The complete configuration is provided in a single YAML file as requested:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.6
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password  # You should use a Kubernetes secret here for production
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          value: password  # You should use a Kubernetes secret here for production
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: wordpress
+```
+
+### Instructions:
+1. Ensure that Kubernetes is installed and configured on your environment.
+2. Save this YAML content into a file, for example, `wordpress-mysql-deployment.yml`.
+3. Deploy to your Kubernetes cluster using the command:
+    ```bash
+    kubectl apply -f wordpress-mysql-deployment.yml
+    ```
+4. Monitor deployment status using:
+    ```bash
+    kubectl get pods
+    kubectl get services
+    ```
+5. Access your WordPress installation via the external IP provided by the LoadBalancer service.
+
+This YAML file covers the deployment of a WordPress instance with a MySQL database, creating persistent volumes for persistent data storage, setting up internal networking with services, and allowing external access to WordPress through a LoadBalancer type service. Remember to change sensitive data and configure according to your security policies in a production environment.

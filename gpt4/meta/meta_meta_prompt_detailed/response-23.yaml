@@ -1,0 +1,183 @@
+```yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql-service:3306
+  WORDPRESS_DB_NAME: wordpress
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: bXlzcWxxcm9vdHBhc3M=  # Base64 encoded password (example: "mysqlrootpass")
+  MYSQL_DATABASE: d29yZHByZXNz            # Base64 encoded database name (example: "wordpress")
+  MYSQL_USER: d29yZHByZXNz                # Base64 encoded username (example: "wordpress")
+  MYSQL_PASSWORD: d29yZHByZXNzcGFzcw==    # Base64 encoded password (example: "wordpresspass")
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4-fpm
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_NAME
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 9000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  ports:
+  - port: 80
+    targetPort: 9000
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Rationale and Analysis:
+
+1. **Images and Configurations**: 
+   - `wordpress:php7.4-fpm` is selected for the WordPress container because it offers a stable, secure, and high-performance PHP environment. The FPM (FastCGI Process Manager) is particularly suitable for heavy-loaded sites and dynamic sites.
+   - `mysql:5.7` for the MySQL container as it provides a balance between performance, features, and stability.
+
+2. **Persistent Volume Claim for MySQL**:
+   - The PVC `mysql-pv-claim` has an `accessMode` of `ReadWriteOnce` which means the volume can be mounted as read-write by a single node, suitable for a relational database.
+   - `storageClassName: standard` effectively leverages the default storage class provisioner.
+
+3. **Deployment Strategy**:
+   - The MySQL deployment uses a `Recreate` strategy to ensure that the old pod is deleted before the new one is created, due to persistent storage constraints.
+   - WordPress uses a `RollingUpdate` strategy to ensure zero downtime during updates and scaling operations.
+
+4. **Services**:
+   - MySQL is using a `ClusterIP` to restrict access within the cluster, enhancing security by preventing external access to the database.
+   - WordPress service type `LoadBalancer` exposes WordPress to the internet, making it accessible externally. This is crucial for a web application but poses potential security concerns that should be addressed with proper ingress controls and security groups.
+
+5. **Resource Allocation and Security**:
+   - Using ConfigMaps and Secrets to separate configuration details and sensitive information aids in effective management and security.
+   - Environmental variables in MySQL and WordPress are pulled from Secrets and ConfigMaps, decreasing the chances of sensitive data leakage and ensuring consistency across the deployments.
+
+### Scalability and Performance:
+Given that WordPress is stateless in this configuration (session state not stored locally), scaling is managed by adjusting the number of replicas in the WordPress deployment. This ensures that the application can handle increased load by distributing requests across multiple instances.
+
+### Security Considerations:
+Securing the database with `ClusterIP` minimizes exposure risk. All sensitive credentials are stored in `Secrets`, ensuring they are not exposed through the configuration. Additional security measures such as Network Policies to restrict traffic to the database, and regular updates to the images to patch vulnerabilities, are recommended.

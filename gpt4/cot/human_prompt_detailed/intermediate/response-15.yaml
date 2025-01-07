@@ -1,0 +1,173 @@
+Creating a Kubernetes YAML manifest to deploy WordPress with a MySQL backend involves multiple components:
+
+1. **Creating ConfigMap** for MySQL and WordPress configuration
+2. **Creating Secrets** for storing sensitive data like database passwords
+3. **Creating Deployments** for WordPress and MySQL
+4. **Creating Persistent Volumes** (if not on a cloud provider that automates this part) and **PersistentVolumeClaims** for MySQL data persistence
+5. **Creating Services** to expose MySQL and WordPress
+
+Let's build the YAML manifest step by step.
+
+### Step 1: ConfigMap and Secrets
+
+**mysql-config.yaml**:
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  MYSQL_DATABASE: wordpress
+```
+
+**wordpress-secret.yaml**:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: "root_password_base64_encoded"  # Use `echo -n 'password' | base64` to generate
+  MYSQL_USER: "wordpress_user_base64"                 # Use base64 encoding
+  MYSQL_PASSWORD: "wordpress_password_base64"         # Use base64 encoding
+```
+
+### Step 2: MySQL Deployment and Service
+
+**mysql-deployment.yaml**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+### Step 3: WordPress Deployment and Service
+
+**wordpress-deployment.yaml**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: MYSQL_DATABASE
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Summary
+This setup includes:
+- MySQL with a Persistent Volume for data, accessible via a Service within the cluster.
+- WordPress configured via environment variables to connect to MySQL.
+- Secrets for sensitive data and ConfigMaps for reusable configuration values.
+- Services to expose WordPress externally and keep MySQL internal.
+
+
+Apply these YAML files one by one or combine them all into one comprehensive file according to your deployment policy. Remember to replace secret values with actual base64-encoded strings. You may want to customize CPU, memory resources, and replicas depending on your specific needs.

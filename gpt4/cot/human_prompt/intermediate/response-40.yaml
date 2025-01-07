@@ -1,0 +1,148 @@
+To deploy WordPress with a MySQL database on Kubernetes, we'll create two separate deployments along with their respective services. One deployment will be for MySQL and another for WordPress. We'll also need to handle persistent data storage by creating PersistentVolumeClaims.
+
+Here’s a breakdown of the required steps:
+
+1. **MySQL Secrets**: Store the MySQL root password securely.
+2. **Persistent Volume Claims (PVCs)**: These ensure that data persists even if the containers are restarted or moved.
+3. **MySQL Deployment**: This includes setting up the MySQL container with the necessary environment variables and mounting the PVCs.
+4. **MySQL Service**: Exposes MySQL to other pods.
+5. **WordPress Deployment**: This setup configures WordPress to connect to MySQL and also uses a PVC to store WordPress files.
+6. **WordPress Service**: Exposes WordPress to the outside world.
+
+Below is the YAML manifest containing all the components:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.6
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: wordpress-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+```
+
+### Notes:
+- **Secrets**: Substitute `YOUR_BASE64_ENCODED_PASSWORD` with the actual base64 encoded password for MySQL.
+- **Persistent Volumes and MySQL Configuration**: Adjust the storage request sizes based on your requirements.
+- **Service Clustering**: The MySQL service is headless (`clusterIP: None`) which might be useful for certain kinds of database replication strategies or specific clients.
+- **Exposing WordPress**: The WordPress service is set up with a LoadBalancer type, which makes it publicly accessible through an external IP. This is suitable for cloud platforms that support LoadBalancer services. If you are deploying in an environment without LoadBalancer support, use a NodePort or ExternalIP configuration instead.
+
+Make sure to apply this configuration with `kubectl apply -f filename.yaml`, assuming you saved the contents into a file named `filename.yaml`. This setup requires a Kubernetes cluster with persistent volume support and a cloud provider capable of provisioning load balancers if using the aforementioned service type for WordPress. Adjust and review configurations based on the specific environment where you are deploying.

@@ -1,0 +1,147 @@
+To deploy a WordPress website with a MySQL database on Kubernetes, we'll need a few components:
+
+1. A MySQL deployment with a Persistent Volume for data persistence.
+2. A WordPress deployment which connects to the MySQL database.
+3. Services to expose both MySQL and WordPress pods to each other and possibly to the outside world.
+
+For the datastore, it would be prudent to use PersistentVolumes (PV) and PersistentVolumeClaims (PVC) to ensure the data is preserved across container restarts.
+
+Below is a step-by-step Kubernetes manifest file that accomplishes the setup. This example assumes that you have a default StorageClass configured in your cluster. If not, you may need to adjust the PersistentVolume configuration accordingly.
+
+### Step 1: MySQL Deployment and Service
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          value: wordpress
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+### Step 2: WordPress Deployment and Service
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Summary
+
+This configuration sets up:
+- Persistent storage using PVCs for both MySQL and WordPress.
+- MySQL and WordPress deployments, each configured with the appropriate environment variables.
+- Services to expose MySQL only to the WordPress pod and WordPress to the outside world using a LoadBalancer (which is the typical setup for a production environment).
+
+Remember to adjust resource requests, replicas, environment variables, and other configurations as necessary to match your specific requirements and environment.

@@ -1,0 +1,148 @@
+To deploy a WordPress website using a MySQL database on Kubernetes, we'll need two main components:
+
+1. A MySQL database
+2. A WordPress instance that connects to the MySQL database
+
+We will create configurations for two Deployments (one for MySQL and one for WordPress) as well as their corresponding Services to allow communication between them. For simplicity, we'll use Kubernetes Secrets to manage the database credentials.
+
+### Step 1: Create a secret for MySQL credentials
+First, we'll create a Kubernetes Secret to store our MySQL root password and WordPress database credentials, so they aren't exposed in our Deployment configurations.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  mysql-root-password: <base64-encoded-password>
+  mysql-password: <base64-encoded-wordpress-password>
+```
+
+**Note**: Replace `<base64-encoded-password>` and `<base64-encoded-wordpress-password>` with actual base64 encoded values. You can generate a base64 encoded value using:
+```bash
+echo -n 'your-password' | base64
+```
+
+### Step 2: MySQL Deployment and Service
+Next, we deploy MySQL. The deployment specifies the environment variables, volume mounts, and other configurations needed for MySQL.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpress
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 3: WordPress Deployment and Service
+Finally, let's deploy WordPress, which will connect to our MySQL database.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: mysql-password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Notes on Persistent Volumes
+The YAML above assumes persistent volumes will be created and claimed (`mysql-pvc` and `wordpress-pvc`). You'll have to define these PersistentVolumeClaims separately based on your cluster's storage capabilities and configuration. This setup is critical for retaining data across pod restarts.
+
+Deploy these configurations to your Kubernetes cluster with:
+
+```bash
+kubectl apply -f <filename>.yaml
+```
+
+This basic setup should help you get a WordPress instance running with a MySQL backend. Depending on your environment or production needs, you might need to further customize performance configurations, resource limits, or advanced security settings.

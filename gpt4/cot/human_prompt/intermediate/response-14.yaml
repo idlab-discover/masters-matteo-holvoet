@@ -1,0 +1,173 @@
+To deploy a WordPress website using a MySQL database with Kubernetes, you'll typically use a combination of Deployments, Services, and often Persistent Volumes, if necessary, for storage persistence. Below is a step-by-step breakdown of creating these components via YAML manifests.
+
+First, let’s start by creating a MySQL deployment along with its necessary Persistent Volume and Service.
+
+### Step 1: MySQL Deployment
+
+#### MySQL Secret for Storing the Password
+
+It's best to use Kubernetes Secrets for sensitive data like the MySQL root password. Here's how you can define this:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: {BASE64 ENCODED PASSWORD}
+```
+
+Remember to replace `{BASE64 ENCODED PASSWORD}` with your base64-encoded password.
+
+#### MySQL Deployment
+
+Here is the MySQL Deployment, which mounts a volume for persistent storage:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+#### MySQL PersistentVolumeClaim
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Step 2: MySQL Service
+
+To expose the MySQL to the WordPress deployment, create a service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+  clusterIP: None
+```
+
+Now, let’s set up the WordPress Deployment and Service.
+
+### Step 3: WordPress Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+```
+
+### Step 4: WordPress PersistentVolumeClaim
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Step 5: WordPress Service
+
+This service allows access to the WordPress site from outside the cluster.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+    - protocol: TCP
+      port: 80
+  type: LoadBalancer
+```
+
+This sequence of manifests will set up a simple, yet effective WordPress website backed by MySQL, leveraging Kubernetes for orchestration. This setup uses Secrets for sensitive information, persistent storage for database integrity and WordPress data, and appropriate networking to provide access to the WordPress site from external sources. Deploy these manifests with `kubectl apply -f <filename>.yaml` commands.

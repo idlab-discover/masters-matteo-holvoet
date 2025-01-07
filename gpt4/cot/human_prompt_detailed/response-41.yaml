@@ -1,0 +1,147 @@
+Here's the complete YAML configuration for deploying a WordPress instance with a MySQL database backend in one single YAML file. Make sure to replace the base64-encoded values with your own secrets.
+
+```yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+data:
+  WORDPRESS_DB_HOST: mysql-service
+  WORDPRESS_DB_NAME: wordpress
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: bXlzcWxwYXNzd29yZA==  # This is base64 for "mysqlpassword"
+  MYSQL_PASSWORD: d29yZHByZXNzcGFzc3dvcmQ=  # This is base64 for "wordpresspassword"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: MYSQL_ROOT_PASSWORD
+          - name: MYSQL_DATABASE
+            valueFrom:
+              configMapKeyRef:
+                name: wordpress-config
+                key: WORDPRESS_DB_NAME
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: MYSQL_PASSWORD
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+          - name: WORDPRESS_DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: wordpress-config
+                key: WORDPRESS_DB_HOST
+          - name: WORDPRESS_DB_USER
+            value: "root"
+          - name: WORDPRESS_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: MYSQL_ROOT_PASSWORD
+          - name: WORDPRESS_DB_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: wordpress-config
+                key: WORDPRESS_DB_NAME
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+```
+
+### Notes
+- Replace `MYSQL_ROOT_PASSWORD` and `MYSQL_PASSWORD` values in the Secret with your own base64 encoded passwords.
+- Adjust the CPU and memory requests/limits as per your cluster capacity and expected workload.
+- Make sure to apply these configurations in a namespace that is configured for the resources it needs.
+- It’s important to properly manage secrets in Kubernetes. For more secure management, consider using more secure secret management tools like HashiCorp Vault or integrate Kubernetes with a managed secret management service from cloud providers.

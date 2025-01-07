@@ -1,0 +1,193 @@
+```yaml
+# Expert 1: Maria
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-deployment
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: wordpress-deployment
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: wordpress-deployment
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: wordpress-deployment
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+```yaml
+# Expert 2: John
+# Adding a Secret for MySQL password, environment variable for WordPress to connect to MySQL, and defining the WordPress deployment along with a Service for each.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: wordpress-deployment
+  name: mysql-pass
+type: Opaque
+data:
+  password: bXlzcWwtcGFzc3dvcmQ=  # Base64 encoded password "mysql-password"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: wordpress-deployment
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: wordpress-deployment
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # Headless service for stable network identity
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: wordpress-deployment
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+```yaml
+# Expert 3: Rachel
+# Verifying and complimenting the comprehensive deployments provided by Maria and John. Fixing a minor error (forgot to add MYSQL_DATABASE environment variable for WordPress).
+
+
+# Correcting the environment variables for MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: wordpress-deployment
+  name: mysql
+spec:
+  replicas: 1  # Specifying the number of replica pods
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+# Adding storage requirements for WordPress to improve performance
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "512Mi"
+          limits:
+            cpu: "200m"
+            memory: "1Gi"
+
+# Review complete: The manifest now includes proper Secret management, persistent volume claims, necessary deployment specifications, and services for both MySQL and WordPress.
+```

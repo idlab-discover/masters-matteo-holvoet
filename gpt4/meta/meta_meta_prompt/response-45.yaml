@@ -1,0 +1,166 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: wordpress-namespace
+data:
+  mysql.conf: |
+    [mysqld]
+    sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - image: mysql:5.7
+          name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+          args: ["--defaults-file=/etc/mysql/conf.d/mysql.conf"]
+      volumes:
+        - name: mysql-config
+          configMap:
+            name: mysql-config
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - image: wordpress:latest
+          name: wordpress
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_USER
+              value: root
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          ports:
+            - containerPort: 80
+              name: wordpress
+          volumeMounts:
+            - name: wordpress-persistent-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+```
+
+This manifest includes the following:
+
+1. **Namespace**: Isolates resources for cleaner management.
+2. **Secret**: Holds the MySQL password securely.
+3. **ConfigMap**: Holds MySQL configuration to be mounted into the MySQL pods.
+4. **PersistentVolumeClaims**: Defines storage requirements that survive pod recreation.
+5. **Deployments**: For scalable replicas of WordPress and MySQL pods. MySQL uses a "Recreate" strategy to avoid concurrent access issues with PersistentVolumes.
+6. **Services**: Expose WordPress on a LoadBalancer to handle traffic from the internet, MySQL remains internal with a ClusterIP.
+
+This design aims for high availability and scalability by allowing for dynamic scaling of WordPress pods. A consideration for heavy traffic scenarios might involve more complex scaling strategies for MySQL or substituting with a more scalable database solution, watched over by operators in a more advanced scenario. Additionally, monitoring, resource limits, and traffic management (ingress controllers) would need consideration in a production setup.

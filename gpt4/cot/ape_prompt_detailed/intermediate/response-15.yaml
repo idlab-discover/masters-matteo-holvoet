@@ -1,0 +1,176 @@
+Certainly! To deploy a WordPress site with a MySQL database on Kubernetes while using Secrets, ConfigMaps, PersistentVolumeClaims (PVCs), and Services, you need to create a YAML file that describes all these resources. Below, I'll go through each component step-by-step:
+
+### 1. Create a Secret for MySQL Credentials
+
+Secrets are Kubernetes objects used to store and manage sensitive information, such as passwords or tokens.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: <base64-encoded-password>
+```
+
+Replace `<base64-encoded-password>` with your base64-encoded password. You can encode your password using:
+```bash
+echo -n 'yourpassword' | base64
+```
+
+### 2. Create a ConfigMap for MySQL and WordPress Configuration
+
+ConfigMaps allow you to decouple configuration artifacts from image content to keep containerized applications portable.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp-mysql-config
+data:
+  MYSQL_DATABASE: wordpress
+  MYSQL_USER: wordpress
+  MYSQL_ROOT_PASSWORD: rootpassword
+```
+
+### 3. Deployment of MySQL
+
+This includes a PersistentVolumeClaim for data persistence.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: wp-mysql-config
+              key: MYSQL_DATABASE
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+```
+
+### 4. PersistentVolumeClaim for MySQL
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+```
+
+### 5. MySQL Service
+
+A service to expose the MySQL deployment within the cluster.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### 6. Deployment of WordPress
+
+This deployment configures WordPress to connect to the MySQL database.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wp-mysql-config
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wp-mysql-config
+              key: MYSQL_DATABASE
+        ports:
+        - containerPort: 80
+```
+
+### 7. WordPress Service
+
+A service to expose WordPress to the internet (typically via a LoadBalancer or NodePort for minikube testing).
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+### Conclusion
+
+Paste all these sections into a single YAML file, then apply it with `kubectl apply -f <file-name>.yaml`. This setup configures WordPress and MySQL using best practices such as Secrets for sensitive data, ConfigMaps for configuration, PVCs for data persistence, and Services for networking.

@@ -1,0 +1,114 @@
+### Expert A - Kubernetes DevOps Specialist
+
+#### Step 1: Analyze Requirements
+- To deploy WordPress and MySQL on Kubernetes, we need two separate deployments with associated PersistentVolumeClaims, Services, ConfigMaps, and Secrets.
+- WordPress needs environment variables pointing to MySQL.
+- MySQL will use a Secret to store database credentials.
+
+**Step Analysis:**
+Expert A outlines the fundamentals and acknowledges the need for Secrets and environment variables, which are crucial for integrating WordPress and MySQL.
+
+#### Step 2: Writing Manifest for MySQL Deployment
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+**Step Analysis:**
+Detailed manifest YAML outlines both the deployment and the PVC. Correctly uses secrets for MySQL's root password.
+
+#### Step 3: Create Secret and ConfigMap
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: cGFzc3dvcmQ=  # base64 encoded password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-configmap
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_USER: root
+  WORDPRESS_DB_PASSWORD: password
+```
+
+**Step Analysis:**
+The provision of MySQL's password through a Secret and DB information through a ConfigMap is correct but the password should not be included as plain text even in encoded form here.
+
+### Expert B - Cloud Architect
+
+#### Step 1: Analyze Requirements
+- Consider security and scalability in the deployments. 
+- Ensure configurations are easy to update and manage via ConfigMaps and Secrets.
+
+**Step Analysis:**
+Emphasizes on security and scalability but lacks detailed required components explanation like the previous expert.
+
+#### Step 2 & 3: Write ConfigMap, Secret, and volume claims
+Suggests steps similar to Expert A but with additional emphasis on scalability settings like auto-scaling provisions which aren't explicitly required here.
+
+### Expert C - Application Developer
+
+#### Step 1: Discuss Application Requirements
+Notes on integration between MySQL and WordPress would need environment variables to communicate correctly.
+
+#### Step 2 & 3: Deployment Manifests
+Focuses on the application integration, similar in deployment descriptors but less detailed in Kubernetes-specific configurations like persistent volumes and secrets.
+
+---
+
+**Scoring among Experts:**
+- Expert A: 5 for all steps (detailed and accurate Kubernetes-centric approach).
+- Expert B: 3 - provided good insights but missed some specifics (scaling not required at this stage).
+- Expert C: 4 - good application focus but less infrastructural detail.
+
+---
+
+**Consensus and Conclusion:**
+Expert A provides the most accurate and comprehensive Kubernetes configuration for deploying WordPress with MySQL. Adopt Expert A's approach as the consensus solution, ensuring correct and secure deployment using Kubernetes best practices.

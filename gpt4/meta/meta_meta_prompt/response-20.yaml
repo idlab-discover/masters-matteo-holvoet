@@ -1,0 +1,138 @@
+To address the requirements of launching a WordPress site with a MySQL database backend in Kubernetes while ensuring high availability, load balancing, and robust management for varying traffic loads and node failures, a combination of several Kubernetes resources are utilized. Here's an overview of the design choices followed by YAML manifests:
+
+### Design Choices:
+1. **StatefulSets for MySQL:**
+   - **Reason**: Guarantees ordering and uniqueness.
+   - **Use**: Ensures that database pods are maintained and brought up in a stable manner, preserving the order and data integrity, crucial for MySQL operation.
+
+2. **Deployments for WordPress:**
+   - **Reason**: Enables easy scaling and updates.
+   - **Use**: Manages the WordPress instances by ensuring that specified number of pods are running even in the event of a node failure.
+
+3. **Services for Load Balancing and Stable Networking:**
+   - **Type**: ClusterIP for MySQL and LoadBalancer for WordPress.
+   - **Use**: ClusterIP restricts MySQL access within the cluster, enhancing security. LoadBalancer exposes WordPress to the internet and distributes traffic, improving availability and response times during traffic spikes.
+
+4. **Persistent Volumes and Claims:**
+   - **Reason**: Data persistency.
+   - **Use**: Ensures that critical data (both WordPress content and MySQL databases) is not lost in the event of pod failure or rescheduling.
+
+5. **Horizontal Pod Autoscaler:**
+   - **Reason**: Automatically scales the number of WordPress pod instances based on observed CPU utilization.
+   - **Use**: Handles sudden spikes in traffic without human intervention, maintaining performance and availability.
+
+### YAML Manifests:
+The following configurations encapsulate the design choices:
+
+#### MySQL StatefulSet and Service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  clusterIP: None
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: "mysql"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: secret
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: mysql-persistent-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+```
+
+#### WordPress Deployment, Service, and Horizontal Pod Autoscaler:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:latest
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_PASSWORD
+              value: secret
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: wordpress-persistent-storage
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-persistent-storage
+          persistentVolumeClaim:
+            claimName: wp-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+```
+
+### Justification and Extrapolation to Other Web Applications:
+The above configuration not only serves WordPress and MySQL but can also be adapted to similar web applications requiring high availability, scalability, and data persistence. Understanding the balance of resource management, security settings, and the dynamic scaling approach is transferrable knowledge applicable to deploying scalable, resilient web applications in Kubernetes environments.

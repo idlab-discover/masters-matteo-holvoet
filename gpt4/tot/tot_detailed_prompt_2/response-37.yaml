@@ -1,0 +1,141 @@
+```yaml
+# Expert 1: Starting with the MySQL Deployment including PersistentVolumeClaim
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+```yaml
+# Expert 2: Adding on the MySQL Service and ConfigMap for environment variables
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  user: root
+```
+
+```yaml
+# Expert 3: Completes MySQL section and begins WordPress Deployment with Services
+# Expert 3 correction: Use MySQL Credentials directly from the Secret, plus use ConfigMap additions if needed.
+
+# Continuing with the WordPress Deployment:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.1-php7.3-apache
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+```yaml
+# Expert 1: Final touch - Adding secrets for MySQL
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: YWJjMTIzIXNlY3JldA==  # base64 encoded 'abc123!secret'
+```
+
+```yaml
+# Expert 2: Verification and Review
+# Looks like all parts are included. We have config maps, secrets used properly, Deployments for both WordPress and MySQL, and services for connectivity. We should verify the base64 encoding is correct and ensure labels and selectors are aligned across Deployments and Services.
+
+# Expert 3: Agrees and validates the template, optimizing where needed based on Kubernetes best practices before final deployment. Suggests adding readiness and liveness probes for both WordPress and MySQL containers to ensure smooth operations.
+```

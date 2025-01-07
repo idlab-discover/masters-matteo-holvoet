@@ -1,0 +1,176 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-demo
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-demo
+type: Opaque
+data:
+  password: bXlzcWxwYXNzCg==  # Base64 encoding of 'mysqlpass'
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-demo
+data:
+  WORDPRESS_DB_HOST: mysql:3306
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-demo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-config
+              key: WORDPRESS_DB_HOST
+        - name: WORDPRESS_DB_USER
+          value: wordpress_user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress_database
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-demo
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress_database
+        - name: MYSQL_USER
+          value: wordpress_user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-demo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-demo
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+```
+
+**Rationalization and Evaluation:**
+
+1. **Container Images:**
+   - **WordPress:** Latest WordPress image for latest features and security patches, but can consider using an LTS tag for stability.
+   - **MySQL:** Version 5.7 optimized for compatibility with a broad range of applications and known for its stability, though MySQL 8.0 could be considered for newer performance enhancements.
+
+2. **Scalability and Fault Tolerance:**
+   - Multiple replicas of WordPress and MySQL ensure service availability even if a node goes down.
+   - RollingUpdate strategy minimizes downtime during updates.
+
+3. **Security:** 
+   - Using Secrets for passwords limits potential exposure.
+   - MySQL’s service type ClusterIP isolates it from direct external access.
+   - Further enhancements could include network policies to restrict traffic between pods and TLS/SSL for data in transit.
+
+4. **Automation of Updates and Rollbacks:**
+   - Kubernetes RollingUpdate provides zero-downtime updates. Combined with proper readiness and liveness probes, it can ensure continuity.
+   - Helm charts or operators could automate complex deployment tasks and manage lifecycles comprehensively.
+
+This proposal fulfills the complex requirements by integrating best practices for resilience, security, and efficiency in Kubernetes environments. Further consideration could extend to more advanced monitoring and logging solutions for better operational visibility.

@@ -1,0 +1,173 @@
+To set up a WordPress website using a MySQL database backend on Kubernetes, you will need the following components:
+
+1. **Persistent Volumes**: to store the data persistently outside of pods.
+2. **Secrets or ConfigMaps**: to manage sensitive information like database credentials.
+3. **Deployments**: to manage the WordPress and MySQL containers.
+4. **Services**: to expose the applications (WordPress and MySQL) within the cluster or externally.
+
+### Step 1: Create a Persistent Volume
+
+First, you’ll often rely on a Persistent Volume (PV) and a Persistent Volume Claim (PVC) for data storage, ensuring that your data persists across pod restarts and failures. However, in cloud environments, you would use dynamic provisioning. For simplicity, below is a basic set-up:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+### Step 2: Create a Secret for MySQL Password
+
+Next, store the MySQL root password as a Kubernetes Secret:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD # Use `echo -n "password" | base64` to encode your password.
+```
+
+### Step 3: MySQL Deployment
+
+Create a MySQL deployment. This setup will use the password from the secret created earlier:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.6
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+### Step 4: MySQL Service
+
+Expose MySQL to the cluster:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+### Step 5: WordPress Deployment
+
+Create a WordPress deployment that connects to MySQL:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+### Step 6: WordPress Service
+
+Expose WordPress to external traffic:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - port: 80
+  type: LoadBalancer
+```
+
+### Conclusion
+
+To deploy this configuration, save it into a file, say `wordpress-mysql.yaml`, and apply it to your Kubernetes cluster by running `kubectl apply -f wordpress-mysql.yaml`.
+
+Make sure to replace `YOUR_BASE64_ENCODED_PASSWORD` with your actual base64-encoded MySQL root password. Ensure your Kubernetes setup supports LoadBalancer service type, or adjust accordingly, perhaps using a NodePort or an Ingress controller if working on a local or restricted environment.

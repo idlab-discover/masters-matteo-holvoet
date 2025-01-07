@@ -1,0 +1,145 @@
+To deploy a WordPress website with a MySQL database on Kubernetes, you need to create multiple resources: PersistentVolumeClaims (PVCs) for persistent storage, Deployment resources for WordPress and MySQL, and a Service resource for network access. Here’s a step-by-step guide for each part of the setup in a YAML file format.
+
+1. **Persistent Volume Claims (PVC)**
+   - PVC for MySQL to store database files.
+   - PVC for WordPress to store website data.
+
+2. **Deployments**
+   - Deployment for the MySQL database.
+   - Deployment for the WordPress application.
+
+3. **Services**
+   - Service for MySQL to allow communication within the cluster.
+   - Service for WordPress to expose it to the Internet.
+
+Here's a complete Kubernetes YAML manifest based on the above plan:
+
+```yaml
+apiVersion: v1
+kind: List
+items:
+# MySQL PersistentVolumeClaim
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: mysql-pvc
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 2Gi
+
+# WordPress PersistentVolumeClaim
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: wordpress-pvc
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+
+# MySQL Deployment
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: mysql
+  spec:
+    selector:
+      matchLabels:
+        app: mysql
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          app: mysql
+      spec:
+        containers:
+        - image: mysql:5.7
+          name: mysql
+          env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: "yourpassword"  # Change this to the actual password
+          - name: MYSQL_DATABASE
+            value: "wordpress"
+          ports:
+          - containerPort: 3306
+          volumeMounts:
+          - name: mysql-storage
+            mountPath: /var/lib/mysql
+        volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+# MySQL Service
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: mysql
+  spec:
+    ports:
+    - port: 3306
+    selector:
+      app: mysql
+    clusterIP: None  # This is for internal access only
+
+# WordPress Deployment
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: wordpress
+  spec:
+    selector:
+      matchLabels:
+        app: wordpress
+    template:
+      metadata:
+        labels:
+          app: wordpress
+      spec:
+        containers:
+        - image: wordpress:latest
+          name: wordpress
+          env:
+          - name: WORDPRESS_DB_HOST
+            value: mysql
+          - name: WORDPRESS_DB_NAME
+            value: "wordpress"
+          - name: WORDPRESS_DB_USER
+            value: "root"
+          - name: WORDPRESS_DB_PASSWORD
+            value: "yourpassword"  # Match to MySQL environment
+          ports:
+          - containerPort: 80
+          volumeMounts:
+          - name: wordpress-storage
+            mountPath: /var/www/html
+        volumes:
+        - name: wordpress-storage
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+
+# WordPress Service
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: wordpress
+  spec:
+    type: LoadBalancer
+    ports:
+    - port: 80
+    selector:
+      app: wordpress
+```
+
+### Important Notes:
+- **Volume Configuration**: The above setup assumes a Kubernetes cluster with support for dynamic volume provisioning. If your cluster setup differs, additional configuration for volumes might be needed.
+- **Passwords and Security**: This example uses environment variables to set sensitive information, which isn't recommended for production deployments. Look into Kubernetes Secrets for a more secure approach.
+- **MySQL Version**: You can specify a different MySQL version by changing the "image" tag in the MySQL deployment spec.
+
+This YAML can be applied by saving it to a file (e.g., `wordpress-mysql.yaml`) and then running `kubectl apply -f wordpress-mysql.yaml`. Always ensure that you have permissions and the prerequisites (like a Kubernetes cluster and kubectl configured) are met before running the command.

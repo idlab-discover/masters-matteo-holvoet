@@ -1,0 +1,135 @@
+```yaml
+# Expert 1: 
+# Let's start by defining the Kubernetes manifest for a MySQL deployment. 
+# We will need a Deployment and a Service for the MySQL. To keep the data persistent across Pod restarts, we will also use a PersistentVolumeClaim.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: my-secret-pw   # This should be handled more securely in production using secrets
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+# Additionally, we define a Service to expose the MySQL Deployment within the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None  # This makes it a headless service
+
+#------------------------------------------------------------------------------
+# Expert 2:
+# Looks good! Moving on to the WordPress part. We will define both Deployment and Service for WordPress.
+# Importantly, we need to ensure that the WordPress pod can communicate with the MySQL pod via the MySQL Service we defined above.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql   # linking to the MySQL service
+        - name: WORDPRESS_DB_PASSWORD
+          value: my-secret-pw  # Same note on security as above
+        ports:
+        - containerPort: 80
+
+---
+# We also need a Service to expose WordPress to the outside world. We'll set it as type NodePort for now.
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: NodePort
+
+#------------------------------------------------------------------------------
+# Expert 3:
+# Excellent work, both of you. Everything seems to be in order. 
+# However, let's utilize Kubernetes Secrets to handle the MySQL password more securely. I'll add that.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: bXktc2VjcmV0LXB3  # base64 encoded password ("my-secret-pw")
+
+---
+# We need to modify both MySQL and WordPress deployments to use this Secret. I'll adjust the necessary parts.
+
+# Adjusting the MySQL Deployment:
+        # Previous MySQL env section
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+
+# Adjusting the WordPress Deployment:
+        # Previous WordPress env section
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+```
+This sequence of interactions would include actual code changes and deployment testing in a real-world scenario, ensuring everything is set up correctly and working as expected.

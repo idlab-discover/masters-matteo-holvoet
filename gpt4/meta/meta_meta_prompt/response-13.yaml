@@ -1,0 +1,195 @@
+### Kubernetes YAML Manifest for a Scalable WordPress Deployment with MySQL Backend
+
+I will design a robust Kubernetes deployment for a WordPress website with a MySQL backend that focuses on scalability, security, and reliability. The system will utilize Kubernetes features including auto-scaling, load balancing, persistent storage, and network policies.
+
+#### Part 1: Deployment Description
+
+1. **WordPress Deployment**: The WordPress application frontend.
+2. **MySQL Deployment**: The backend database for WordPress.
+3. **Persistent Volume Claim (PVC)**: Ensures data persistence for MySQL.
+4. **Horizontal Pod Autoscaler (HPA)**: Auto-scaling based on traffic.
+5. **Network Policy**: Controls traffic flow to enhance security.
+6. **Services**: Load balancing and stable network addresses.
+7. **Monitoring**: Using Prometheus and Grafana.
+
+### YAML Manifests
+
+#### WordPress Deployment and Service
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wordpressuser
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+```
+
+#### MySQL Deployment, Service, and PVC
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        - name: MYSQL_USER
+          value: wordpressuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+```
+
+#### Horizontal Pod Autoscaler for WordPress
+
+```yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+```
+
+#### Network Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+```
+
+### Explanation of Choices
+
+1. **Auto-scaling & Load Balancing**: The Horizontal Pod Autoscaler dynamically adjusts the number of WordPress pods based on CPU usage, ensuring performance during high traffic. The `LoadBalancer` service type distributes incoming traffic, providing high availability and reducing downtime.
+
+2. **Security**: The `NetworkPolicy` restricts traffic flow between WordPress and MySQL to only necessary communication, lowering the risk of attacks.
+
+3. **Persistent Storage for MySQL**: The PVC for MySQL ensures data integrity and availability, even if the pod fails. This setup benefits from Kubernetes' ability to automatically manage and provision the underlying storage resources.
+
+4. **Monitoring**: Integration with Prometheus for metric collection and Grafana for visualization would be critical. Metrics to monitor include CPU and memory usage, pod health, and response times.
+
+This design integrates features for scalability, security, and reliability, providing a comprehensive solution for a high-traffic WordPress website using Kubernetes.

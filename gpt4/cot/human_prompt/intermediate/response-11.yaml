@@ -1,0 +1,187 @@
+Creating a simple Kubernetes deployment for a WordPress website with a MySQL database backend involves several components:
+
+1. A MySQL Deployment
+2. A WordPress Deployment
+3. A Persistent Volume (PV) and Persistent Volume Claim (PVC) for each deployment
+4. Services to expose and connect the deployments
+
+Here is a step-by-step guide to setting up both MySQL and WordPress on Kubernetes using YAML configuration files.
+
+### Step 1: Define Persistent Volumes and Claims
+
+For MySQL:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  labels:
+    app: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+For WordPress:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  labels:
+    app: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+### Step 2: MySQL Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+```
+
+### Step 3: WordPress Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+```
+
+### Step 4: Expose Services
+
+For MySQL:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+  clusterIP: None
+```
+
+For WordPress:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+    tier: frontend
+  type: LoadBalancer
+```
+
+### Additional Resources
+
+You'll need to create a Kubernetes Secret to store sensitive data like the MySQL root password:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  password: base64-encoded-password
+```
+
+To use this, replace `base64-encoded-password` with your actual password base64 encoded. You can generate a base64 encoded string using:
+
+```sh
+echo -n 'yourpassword' | base64
+```
+
+### Deployment Notes
+
+- This is a very basic example and doesn't cover security configurations, such as securing WordPress admin page, nor does it configure replicas for high availability.
+- It assumes that the Kubernetes cluster can dynamically provision volumes. If not, you'll also need to manually create `PersistentVolume` resources that map to the claims.
+- Make sure to adapt storage requests and other specifications according to your needs. 
+
+Deploy by applying each manifest file in your Kubernetes cluster using `kubectl apply -f <filename>.yaml`.

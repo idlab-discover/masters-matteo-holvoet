@@ -1,0 +1,143 @@
+```yaml
+# Step 1: Define ConfigMap for MySQL and WordPress configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp-config
+data:
+  wp_db_host: "mysql-service"  # Name of the MySQL service
+  wp_db_name: "wordpress"
+  wp_db_user: "wp_user"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wp-secret
+type: Opaque
+data:
+  wp_db_password: "cGFzc3dvcmQ="  # Base64 encoded string for "password"
+
+# Step 2: Define a PersistentVolumeClaim for MySQL data persistence
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+# Step 3: Create Deployments for MySQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wp-secret
+              key: wp_db_password
+        - name: MYSQL_DATABASE
+          value: "wordpress"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+# Step 4: Create Service for MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+
+# Step 5: Create Deployment for WordPress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: wp_db_host
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: wp_db_user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wp-secret
+              key: wp_db_password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wp-config
+              key: wp_db_name
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 60
+          periodSeconds: 60
+          timeoutSeconds: 5
+
+# Step 6: Create Service for WordPress
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30080
+  type: NodePort
+```
+
+This YAML file creates a complete environment for running a WordPress site with a MySQL backend, using Kubernetes. It handles configurations, secrets, persistent storage, and appropriate networking between services.

@@ -1,0 +1,183 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.7
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-root-password
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-root-password
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 80
+    nodePort: 30080
+  selector:
+    app: wordpress
+    tier: frontend
+  type: NodePort
+
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+```
+
+### Discussion
+
+1. **Resource Allocation:**
+   - **MySQL**: Allocated 20Gi storage as databases grow over time. CPU/memory isn't specified explicitly to allow Kubernetes to manage them based on cluster capacity and workload. Enhanced performance would recommend resource limits and requests fitting the expected load.
+   - **WordPress**: Allocated 10Gi storage considering media and plugin storage needs. Initial replicas set to 2 for availability and scales based on CPU utilization.
+
+2. **Data Persistence:**
+   - Deployed a PersistentVolumeClaim (PVC) for MySQL to ensure data persists across pod restarts and failures. Recreate strategy to prevent multiple instances from attempting to use the PVC simultaneously, which could risk data corruption.
+
+3. **Scaling Strategy:**
+   - Used a HorizontalPodAutoscaler to automatically scale the number of WordPress pods based on CPU usage. The policy is to maintain around 50% CPU utilization, helping balance load and cost.
+
+4. **Security Considerations:**
+   - Used Kubernetes Secrets to manage MySQL passwords, reducing risk of expose through config files. Future improvements can include network policies to restrict traffic flow between pods and other hardened security measures like TLS for data-in-transit encryption.
+
+5. **Challenges and Limitations:**
+   - Managing stateful sets (like databases) in Kubernetes is complex and may result in data loss if not handled carefully. Balancing cost and performance also remains a critical area that requires continuous monitoring and adjustment.
+   - Future enhancements might include integration with cloud-specific services for database and file storage to enhance performance, reliability, and scalability.
+
+This proposed solution integrates Kubernetes features to create a resilient, scalable WordPress deployment, also addressing foundational security concerns and data management practices.

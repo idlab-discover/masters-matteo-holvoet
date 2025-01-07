@@ -1,0 +1,174 @@
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-namespace
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD_HERE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+  labels:
+    app: wordpress
+    tier: mysql
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+  labels:
+    app: wordpress
+    tier: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+  labels:
+    app: wordpress
+    tier: frontend
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+  labels:
+    app: wordpress
+    tier: frontend
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Key Elements and Considerations
+
+1. **Namespace Isolation**: Dedicates resources and groups everything together, enhancing organizational policies and quota management.
+
+2. **Secrets Management**: Utilizes Kubernetes Secrets for storing sensitive information like MySQL password, reducing the risk of accidental exposure.
+
+3. **Persistent Storage**: PVCs ensure data persists beyond pod lifecycle. This is crucial for non-volatile components like MySQL data.
+
+4. **Load Balancing and Scalability for WordPress**: Multiple replicas of the frontend WordPress and a service of type LoadBalancer help in distributing traffic load.
+
+5. **Failover and Rolling Updates**: Ensures minimal downtime and seamless upgrades by defining strategy parameters for rolling updates in the Deployments.
+
+6. **Security Hardening**:
+   - The use of secrets and referencing via environment variables limits exposure.
+   - Defining network policies restricts traffic flows between pods to only permitted paths, reducing the attack surface (Not in YAML due to size constraints).
+
+7. **Continuous Deployment**: Using Kubernetes' rolling update strategy provides the foundation for a CD pipeline enabling reliable software updates with minimal service interruption. Integration with CI/CD tools would be essential for automating this based on new code commits and build successes.

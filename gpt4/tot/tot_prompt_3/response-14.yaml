@@ -1,0 +1,178 @@
+### Expert 1: Kubernetes Administrator
+
+#### **Step 1**: Initial Thoughts
+To deploy a WordPress site with MySQL, we'd need at least two containers: one for WordPress and one for MySQL. We should use Kubernetes Deployments or StatefulSets for managing these containers, along with PersistentVolumeClaims (PVCs) for database storage persistence. For communication and accessibility, Services are necessary.
+
+**Scoring Expectation**: This setup is foundational, I score it as 5 because it aligns perfectly with Kubernetes best practices.
+
+#### **Step 2**: Specific Manifest Creation
+- **Deployment for WordPress**: This will include the `wordpress` container which will also need environmental variables like `WORDPRESS_DB_HOST` and credentials passed through Kubernetes secrets.
+- **Deployment for MySQL**: The `mysql` container should also use a PersistentVolumeClaim (PVC) to handle data storage. Just like WordPress, environment variables will be crucial for DB credentials.
+- **Service for MySQL and WordPress**: Both components will need Kubernetes Services to expose them, with MySQL likely on an internal service and WordPress possibly on both internal and external.
+
+**Scoring Expectation**: Applying correct resources, hence score 5.
+
+#### **Score Given by Peers**: 
+
+**Expert 2**: 5 - Correct identification of necessary resources.
+**Expert 3**: 5 - Agreement on deployments and services articulated.
+
+### Expert 2: Kubernetes DevOps Engineer
+
+#### **Step 1**: Initial Thoughts
+Begin by defining two separate Kubernetes manifests. One for WordPress, connected to a MySQL database using environment variables. MySQL credentials must be secured using Kubernetes secrets.
+
+**Scoring Expectation**: This step focuses on security and configuration, which is critical. I score this a 5.
+
+#### **Step 2**: Specific Manifest Creation
+- **Configuration and Secrets**: Creating Kubernetes Secrets object to manage sensitive MySQL credentials.
+- **WordPress and MySQL Container Specifications**: Ensuring WordPress deploys with necessary connection strings and MySQL runs with proper user data initialization.
+
+**Scoring Expectation**: Proper secure management of sensitive data, hence score 5.
+
+#### **Score Given by Peers**:
+
+**Expert 1**: 5 - Proper emphasis on security.
+**Expert 3**: 4 - Needs to elaborate on services exposure mechanisms.
+
+### Expert 3: Cloud Architect
+
+#### **Step 1**: Initial Thoughts
+Integration between WordPress and MySQL in Kubernetes should utilize ConfigMaps and Secrets for configuration and sensitive data. MySql should run on a StatefulSet given its stateful nature.
+
+**Scoring Expectation**: Emphasis on stateful nature of databases, 5 for detailed targeting of deployment typology.
+
+#### **Step 2**: Specific Manifest Creation
+- **StatefulSet for MySQL**: To ensure database integrity and order.
+- **ConfigMap for MySQL Configuration**: Customizing MySQL’s set-up through a ConfigMap.
+- **Exposing WordPress and MySQL**: Creating Kubernetes Services, with careful consideration on access policies, especially for WordPress to be accessible externally.
+
+**Scoring Expectation**: Integration of access and configuration, score 5.
+
+#### **Score Given by Peers**:
+
+**Expert 1**: 5 - Acknowledging StatefulSet for MySQL.
+**Expert 2**: 5 - Great detail on configuration and access controls.
+
+### Consensus and Conclusion:
+All experts agree on the critical components necessary for deploying WordPress with a MySQL backend on Kubernetes. The consensus revolves around using proper Kubernetes resources like Deployments/StatefulSets, Services, PVCs, ConfigMaps, and Secrets for a secure and robust system. Incorporating all expert recommendations, here’s what the Kubernetes YAML manifests might look like:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pv-claim
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+This consensus solution takes into account security, data persistence, and proper exposure of the services, aligning with best practices in Kubernetes deployments.
