@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+    template:
+      metadata:
+        labels:
+          app: wordpress
+      spec:
+        containers:
+        - env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: password
+          image: mysql:5.7
+          name: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+    template:
+      metadata:
+        labels:
+          app: wordpress
+      spec:
+        containers:
+        - env:
+          - name: WORDPRESS_DB_HOST
+            value: wordpress-mysql
+          - name: WORDPRESS_DB_PASSWORD
+            value: password
+          image: wordpress:latest
+          name: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: mysql
+  name: mysql
+spec:
+  containers:
+  - env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: password
+    image: mysql:5.7
+    name: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+spec:
+  containers:
+  - env:
+    - name: WORDPRESS_DB_HOST
+      value: mysql
+    - name: WORDPRESS_DB_PASSWORD
+      value: password
+    image: wordpress:latest
+    name: wordpress
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wordpress
+spec:
+  containers:
+  - env:
+    - name: WORDPRESS_DB_NAME
+      value: wordpress_db
+    - name: WORDPRESS_DB_HOST
+      value: wordpress-mysql
+    - name: WORDPRESS_DB_PASSWORD
+      value: password
+    image: wordpress:latest
+    name: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: wordpress-mysql
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wordpress-mysql
+spec:
+  containers:
+  - env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: password
+    image: mysql:5.7
+    name: mysql
