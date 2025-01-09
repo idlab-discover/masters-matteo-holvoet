@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress-frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-backend-service.default.svc.cluster.local
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              key: db-user
+              name: wordpress-secrets
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: db-password
+              name: wordpress-secrets
+        image: wordpress:latest
+        name: wordpress-container
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mysql
+  name: mysql-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: root-password
+              name: mysql-secrets
+        image: mysql:5.7
+        name: mysql-container
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-frontend-service
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-backend-service
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: v1
+data:
+  wp-config.php: '<?php
+
+    define( ''DB_NAME'', ''wordpress'' );
+
+    define( ''DB_USER'', getenv(''WORDPRESS_DB_USER'') );
+
+    define( ''DB_PASSWORD'', getenv(''WORDPRESS_DB_PASSWORD'') );
+
+    define( ''DB_HOST'', getenv(''WORDPRESS_DB_HOST'') );
+
+    '
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+---
+apiVersion: v1
+data:
+  db-password: cGFzc3dvcmQ=
+  db-user: d29yZHByZXNz
+kind: Secret
+metadata:
+  name: wordpress-secrets
+type: Opaque
+---
+apiVersion: v1
+data:
+  root-password: cm9vdHBhc3N3b3Jk
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque

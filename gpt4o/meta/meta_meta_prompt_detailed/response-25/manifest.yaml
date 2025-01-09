@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-production
+---
+apiVersion: v1
+data:
+  mysql-database: d29yZHByZXNz
+  mysql-password: d3BzZWNyZXQ=
+  mysql-root-password: c3VwZXJzZWNyZXRyb290
+  mysql-user: d3B1c2Vy
+kind: Secret
+metadata:
+  name: db-secret
+  namespace: wordpress-production
+type: Opaque
+---
+apiVersion: v1
+data:
+  WORDPRESS_DB_HOST: mysql-primary.wordpress-production.svc.cluster.local
+  WORDPRESS_DB_NAME: wordpress
+  WORDPRESS_DB_USER: wpuser
+  WORDPRESS_TABLE_PREFIX: wp_
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-production
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-primary
+  namespace: wordpress-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+      role: primary
+  serviceName: mysql-primary
+  template:
+    metadata:
+      labels:
+        app: mysql
+        role: primary
+    spec:
+      containers:
+      - envFrom:
+        - secretRef:
+            name: db-secret
+        image: mysql:5.7
+        name: mysql-database-primary
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-blue
+  namespace: wordpress-production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        version: blue
+    spec:
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: wordpress-config
+        image: wordpress:latest
+        name: wordpress-application-blue
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-production
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-production
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-primary
+  namespace: wordpress-production
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: mysql
+    role: primary
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: wordpress-canary
+  namespace: wordpress-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        version: canary
+    spec:
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: wordpress-config
+        image: wordpress:latest
+        name: wordpress-application-canary
+        ports:
+        - containerPort: 80

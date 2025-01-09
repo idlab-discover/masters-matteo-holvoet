@@ -1,0 +1,205 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-prod
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mysql-prod
+---
+apiVersion: v1
+data:
+  mysql-database: <base64-database-name>
+  mysql-password: <base64-password>
+  mysql-root-password: <base64-root-password>
+  mysql-user: <base64-username>
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: mysql-prod
+type: Opaque
+---
+apiVersion: v1
+data:
+  WORDPRESS_DEBUG: 'false'
+  WORDPRESS_TABLE_PREFIX: wp_
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.database.svc.cluster.local
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              key: mysql-user
+              name: mysql-secret
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              key: mysql-database
+              name: mysql-secret
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /var/www/html/wp-config.php
+          name: wordpress-config-volume
+      volumes:
+      - configMap:
+          name: wordpress-config
+        name: wordpress-config-volume
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: mysql-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-root-password
+              name: mysql-secret
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: mysql-prod
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-svc
+  namespace: wordpress-prod
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: mysql-prod
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-access
+  namespace: wordpress-prod
+spec:
+  egress:
+  - ports:
+    - port: 3306
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          name: mysql-prod
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: mysql-prod
+    ports:
+    - port: 3306
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordpress-monitor
+  namespace: wordpress-prod
+spec:
+  endpoints:
+  - path: /metrics
+    port: 80
+  selector:
+    matchLabels:
+      app: wordpress
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mysql-monitor
+  namespace: mysql-prod
+spec:
+  endpoints:
+  - path: /metrics
+    port: 3306
+  selector:
+    matchLabels:
+      app: mysql
