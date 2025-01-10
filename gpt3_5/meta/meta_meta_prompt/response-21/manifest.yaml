@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ecommerce-data-pv
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ecommerce-data-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: user-authentication
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: user-authentication
+  serviceName: user-authentication
+  template:
+    metadata:
+      labels:
+        app: user-authentication
+    spec:
+      containers:
+      - image: user-authentication-image
+        name: user-authentication
+        volumeMounts:
+        - mountPath: /data
+          name: data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: standard
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: product-catalog
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: product-catalog
+  serviceName: product-catalog
+  template:
+    metadata:
+      labels:
+        app: product-catalog
+    spec:
+      containers:
+      - image: product-catalog-image
+        name: product-catalog
+        volumeMounts:
+        - mountPath: /data
+          name: data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: standard
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: order-processing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: order-processing
+  serviceName: order-processing
+  template:
+    metadata:
+      labels:
+        app: order-processing
+    spec:
+      containers:
+      - image: order-processing-image
+        name: order-processing
+        volumeMounts:
+        - mountPath: /data
+          name: data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecommerce
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ecommerce
+  template:
+    metadata:
+      labels:
+        app: ecommerce
+    spec:
+      containers:
+      - image: ecommerce-image
+        name: ecommerce
+        volumeMounts:
+        - mountPath: /data
+          name: data
+  volumeMounts:
+  - mountPath: /data
+    name: data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: ecommerce-data-pvc

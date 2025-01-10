@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank-frontend
+  template:
+    metadata:
+      labels:
+        app: bank-frontend
+    spec:
+      containers:
+      - image: your-bank-frontend-image
+        name: bank-frontend
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+        resources:
+          limits:
+            cpu: '0.5'
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bank-frontend
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: bank-frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bank-api
+  template:
+    metadata:
+      labels:
+        app: bank-api
+    spec:
+      containers:
+      - image: your-bank-api-image
+        name: bank-api
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bank-api
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: bank-api
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bank-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank-db
+  serviceName: bank-db
+  template:
+    metadata:
+      labels:
+        app: bank-db
+    spec:
+      containers:
+      - image: your-bank-db-image
+        name: bank-db
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bank-db
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: bank-db
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-frontend
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: bank-api
+    - podSelector:
+        matchLabels:
+          app: bank-db
+  podSelector:
+    matchLabels:
+      app: bank-frontend
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: restrict-access
+  namespace: default
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  - watch
+  - list
+---
+apiVersion: v1
+data:
+  api-key: your-base64-encoded-api-key
+  password: your-base64-encoded-password
+kind: Secret
+metadata:
+  name: bank-secrets
+type: Opaque

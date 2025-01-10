@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-deployment
+---
+apiVersion: v1
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-deployment
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-pass
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-pass
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+      volumeClaimTemplates:
+      - metadata:
+          name: mysql-pv-claim
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+          storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wp-hpa
+  namespace: wordpress-deployment
+spec:
+  maxReplicas: 10
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 80
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+  namespace: wordpress-deployment
+spec:
+  maxReplicas: 5
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: mysql
+  targetCPUUtilizationPercentage: 80

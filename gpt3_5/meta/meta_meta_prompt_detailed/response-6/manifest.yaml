@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-statefulset
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:latest
+        name: mysql
+        ports:
+        - containerPort: 3306
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-allowed
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+  podSelector:
+    matchLabels:
+      app: wordpress

@@ -1,0 +1,203 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        image: mysql:latest
+        name: mysql
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-primary
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress-primary
+  template:
+    metadata:
+      labels:
+        app: wordpress-primary
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-secondary
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress-secondary
+  template:
+    metadata:
+      labels:
+        app: wordpress-secondary
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-hpa
+spec:
+  maxReplicas: 5
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 80
+    type: Resource
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: mysql
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-primary-hpa
+spec:
+  maxReplicas: 5
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 80
+    type: Resource
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress-primary
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-secondary-hpa
+spec:
+  maxReplicas: 5
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 80
+    type: Resource
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress-secondary
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: wordpress-service
+spec:
+  hosts:
+  - wordpress-service
+  http:
+  - route:
+    - destination:
+        host: wordpress-primary
+        weight: 80
+    - destination:
+        host: wordpress-secondary
+        weight: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-primary-service
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    app: wordpress-primary
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-secondary-service
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    app: wordpress-secondary
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordpress-monitor
+spec:
+  endpoints:
+  - port: web
+  selector:
+    matchLabels:
+      app: wordpress-primary
+---
+apiVersion: v1
+data:
+  datasource.yaml: "apiVersion: 1\ndatasources:\n  - name: Prometheus\n    type: prometheus\n\
+    \    url: http://prometheus:9090\n    access: proxy\n    isDefault: true"
+kind: ConfigMap
+metadata:
+  name: grafana-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+spec:
+  ports:
+  - port: 3000
+    protocol: TCP
+  selector:
+    app: grafana
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+spec:
+  ports:
+  - port: 9090
+    protocol: TCP
+  selector:
+    app: prometheus

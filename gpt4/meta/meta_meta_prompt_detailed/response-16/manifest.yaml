@@ -1,0 +1,169 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-deployment
+---
+apiVersion: v1
+data:
+  password: YOUR_BASE64_ENCODED_PASSWORD
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-deployment
+type: Opaque
+---
+apiVersion: v1
+data:
+  WORDPRESS_DB_HOST: wordpress-mysql
+  WORDPRESS_DB_NAME: wordpress
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_HOST
+              name: wordpress-config
+        - name: WORDPRESS_DB_USER
+          value: admin
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-pass
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_NAME
+              name: wordpress-config
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress-mysql
+  name: wordpress-mysql
+  namespace: wordpress-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-mysql
+  template:
+    metadata:
+      labels:
+        app: wordpress-mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-pass
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_NAME
+              name: wordpress-config
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: wordpress-mysql
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+  namespace: wordpress-deployment
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-deployment
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-deployment
+spec:
+  maxReplicas: 10
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 50

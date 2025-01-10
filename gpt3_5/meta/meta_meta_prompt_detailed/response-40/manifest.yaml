@@ -1,0 +1,281 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  accessModes:
+  - ReadWriteOnce
+  azureDisk:
+    diskName: mysql-disk
+    diskURI: <azure-disk-uri>
+    kind: Managed
+  capacity:
+    storage: 5Gi
+  storageClassName: azure-managed-disk
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  accessModes:
+  - ReadWriteOnce
+  azureDisk:
+    diskName: wordpress-disk
+    diskURI: <azure-disk-uri>
+    kind: Managed
+  capacity:
+    storage: 10Gi
+  storageClassName: azure-managed-disk
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-persistent-storage
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-statefulset
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-secret
+        image: mysql:latest
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumeClaimTemplates:
+      - metadata:
+          name: mysql-persistent-storage
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+---
+apiVersion: v1
+data:
+  password: <base64-encoded-password>
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-network-policy
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+  podSelector:
+    matchLabels:
+      app: mysql
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-network-policy
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+  podSelector:
+    matchLabels:
+      app: wordpress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: wordpress-service
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  maxReplicas: 7
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 50
+        type: Utilization
+    type: Resource
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress-deployment
+---
+apiVersion: cluster.autoscaler.k8s.io/v1
+kind: ClusterAutoscaler
+metadata:
+  name: cluster-autoscaler
+spec:
+  balanceSimilarNodeGroups: true
+  scaleDownUnneededTime: 10m
+  scaleDownUtilizationThreshold: 0.5
+  skipNodesWithLocalStorage: false
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    release: prometheus
+  name: prometheus-wordpress
+  namespace: monitoring
+spec:
+  endpoints:
+  - interval: 15s
+    port: web
+  selector:
+    matchLabels:
+      app: wordpress
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    release: prometheus
+  name: prometheus-mysql
+  namespace: monitoring
+spec:
+  endpoints:
+  - interval: 15s
+    port: web
+  selector:
+    matchLabels:
+      app: mysql
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    release: prometheus
+  name: mysql-rules
+  namespace: monitoring
+spec:
+  groups:
+  - name: mysql
+    rules:
+    - alert: MySQLReplicationLag
+      annotations:
+        description: '{{$labels.instance}} replication lag of {{$value}} seconds'
+        summary: MySQL replication behind master
+      expr: mysql_slave_status_seconds_behind_master
+      for: 1m
+      labels:
+        severity: warning
+---
+apiVersion: v1
+data:
+  datasources.yaml: "apiVersion: 1\ndatasources:\n- name: Prometheus\n  type: prometheus\n\
+    \  access: proxy\n  url: http://prometheus-server.monitoring.svc.cluster.local\n\
+    \  isDefault: true"
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+---
+apiVersion: v1
+data:
+  <dashboard-name>.json: <base64-encoded-dashboard-configuration>
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+---
+apiVersion: v1
+data:
+  <key1>: <base64-encoded-value1>
+  <key2>: <base64-encoded-value2>
+kind: Secret
+metadata:
+  name: sensitive-data-secret
+type: Opaque

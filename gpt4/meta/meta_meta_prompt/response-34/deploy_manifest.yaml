@@ -1,0 +1,179 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 20Gi
+  hostPath:
+    path: /mnt/data
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-namespace
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: manual
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_PASSWORD
+          value: wordpress
+        image: wordpress:latest
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
+        name: wordpress
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+          requests:
+            cpu: '0.5'
+            memory: 512Mi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        image: mysql:5.7
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
+        name: mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+          requests:
+            cpu: '1'
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+      storageClassName: manual
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-namespace
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-namespace
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-namespace
+spec:
+  maxReplicas: 10
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 50

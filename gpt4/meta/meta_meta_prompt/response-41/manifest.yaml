@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-deployment
+---
+apiVersion: v1
+data:
+  mysql-password: eW91cnNlY3VyZXBhc3N3b3Jk
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-deployment
+type: Opaque
+---
+apiVersion: v1
+data:
+  mysql-database: wordpress
+  mysql-user: wordpress
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: wordpress-deployment
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: wordpress-deployment
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 20Gi
+  hostPath:
+    path: /mnt/data/mysql
+  storageClassName: ''
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-deployment
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ''
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-pass
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              key: mysql-database
+              name: mysql-config
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              key: mysql-user
+              name: mysql-config
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-deployment
+spec:
+  maxReplicas: 10
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-cluster
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        image: wordpress:latest
+        name: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-cluster
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql-cluster
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        image: mysql:latest
+        name: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-cluster
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+    protocol: TCP
+  selector:
+    app: mysql

@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-password
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-persistent-storage
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mysql
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: database
+              name: mysql-db-name
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-password
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+          requests:
+            cpu: 1000m
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+data:
+  my.cnf: '[mysqld]
+
+    skip-host-cache
+
+    skip-name-resolve
+
+    '
+kind: ConfigMap
+metadata:
+  name: mysql-config
+---
+apiVersion: v1
+data:
+  password: <base64-encoded-password>
+kind: Secret
+metadata:
+  name: mysql-root-password
+type: Opaque
+---
+apiVersion: v1
+data:
+  password: <base64-encoded-password>
+  username: <base64-encoded-username>
+kind: Secret
+metadata:
+  name: mysql-user
+type: Opaque
+---
+apiVersion: v1
+data:
+  database: <base64-encoded-database-name>
+kind: Secret
+metadata:
+  name: mysql-db-name
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+  type: ClusterIP

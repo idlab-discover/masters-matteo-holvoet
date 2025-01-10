@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: microservice1
+  template:
+    metadata:
+      labels:
+        app: microservice1
+    spec:
+      containers:
+      - image: <microservice1_image>
+        name: microservice1
+        ports:
+        - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: microservice2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: microservice2
+  serviceName: microservice2
+  template:
+    metadata:
+      labels:
+        app: microservice2
+    spec:
+      containers:
+      - image: <microservice2_image>
+        name: microservice2
+        ports:
+        - containerPort: 8080
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: microservice3
+spec:
+  selector:
+    matchLabels:
+      app: microservice3
+  template:
+    metadata:
+      labels:
+        app: microservice3
+    spec:
+      containers:
+      - image: <microservice3_image>
+        name: microservice3
+        ports:
+        - containerPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: ingress-controller
+spec:
+  rules:
+  - host: ecommerce.example.com
+    http:
+      paths:
+      - backend:
+          service:
+            name: microservice1
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: custom-metrics-hpa
+spec:
+  maxReplicas: 10
+  metrics:
+  - pods:
+      metric:
+        name: custom-metric
+      target:
+        averageValue: 50
+        type: AverageValue
+    type: Pods
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: microservice1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: monitoring-logging
+spec:
+  containers:
+  - image: <monitoring_image>
+    name: monitoring
+  - image: <logging_image>
+    name: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: role-binding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ci-cd-pipeline
+spec:
+  tasks:
+  - name: build
+    taskRef:
+      name: build-task
+  - name: deploy
+    taskRef:
+      name: deploy-task
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: istio
+  template:
+    metadata:
+      labels:
+        app: istio
+    spec:
+      containers:
+      - image: <istio_image>
+        name: istio
+        ports:
+        - containerPort: 8080
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast
+parameters:
+  type: gp2
+provisioner: kubernetes.io/aws-ebs
+reclaimPolicy: Retain
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: optimization-pod
+spec:
+  containers:
+  - image: <optimization_image>
+    name: optimization

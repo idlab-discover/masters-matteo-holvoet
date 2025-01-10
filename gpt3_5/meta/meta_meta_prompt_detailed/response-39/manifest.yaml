@@ -1,0 +1,121 @@
+apiVersion: v1
+data:
+  app.properties: 'logging.level=info
+
+    api.endpoint=https://external-api.com
+
+    '
+kind: ConfigMap
+metadata:
+  name: analytics-config
+---
+apiVersion: v1
+data:
+  db-credentials: YWRtaW46cGFzc3dvcmQxMjM=
+kind: Secret
+metadata:
+  name: analytics-secrets
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice-a
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: microservice-a
+  template:
+    metadata:
+      labels:
+        app: microservice-a
+    spec:
+      containers:
+      - env:
+        - name: DB_CREDENTIALS
+          valueFrom:
+            secretKeyRef:
+              key: db-credentials
+              name: analytics-secrets
+        envFrom:
+        - configMapRef:
+            name: analytics-config
+        image: microservice-a-image:v1
+        name: microservice-a
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice-b
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: microservice-b
+  template:
+    metadata:
+      labels:
+        app: microservice-b
+    spec:
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: analytics-config
+        image: microservice-b-image:v1
+        name: microservice-b
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: microservice-c
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: microservice-c
+  serviceName: microservice-c
+  template:
+    metadata:
+      labels:
+        app: microservice-c
+    spec:
+      containers:
+      - image: microservice-c-image:v1
+        name: microservice-c
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: microservice-a
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-b
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: microservice-b
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-c
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: microservice-c

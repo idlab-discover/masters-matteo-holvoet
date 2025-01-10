@@ -1,0 +1,144 @@
+apiVersion: v1
+data:
+  WP_DB_CHARSET: utf8
+  WP_DB_HOST: mysql:3306
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+---
+apiVersion: v1
+data:
+  mysql-password: cGFzc3dvcmQ=
+  mysql-user: cm9vdA==
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        image: mysql:8.0
+        name: mysql
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: WP_DB_HOST
+              name: wordpress-config
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              key: mysql-user
+              name: mysql-secret
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+spec:
+  maxReplicas: 10
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 50
+--- Here, we've developed a Kubernetes YAML manifest suitable for orchestrating a
+  WordPress website with a MySQL database, emphasizing resilience and scalability.
+  This configuration utilizes ConfigMaps, Secrets, and PersistentVolumeClaims to manage
+  application configuration data and secure sensitive data across the setup. MYSQL
+  has a `Recreate` deployment strategy to ensure no data inconsistencies during its
+  updates. The WordPress service is exposed externally via a LoadBalancer to handle
+  incoming traffic dynamically, suitable for production environments. The HPA ensures
+  that the WordPress deployment can scale automatically based on the CPU usage to
+  handle high-traffic scenarios efficiently.
+...

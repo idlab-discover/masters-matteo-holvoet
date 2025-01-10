@@ -1,0 +1,209 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          value: password
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        image: mysql:latest
+        name: mysql
+        ports:
+        - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup-restore-job
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      containers:
+      - image: your-backup-restore-image
+        name: backup-restore-container
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus
+spec:
+  resources: {}
+  serviceAccountName: prometheus
+  serviceMonitorSelectorNilUsesHelmValues: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - image: grafana/grafana:latest
+        name: grafana
+        ports:
+        - containerPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-network-policy
+spec:
+  egress:
+  - ports:
+    - port: 3306
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 10.0.1.0/24
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 10.0.0.0/24
+    ports:
+    - port: 80
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-replica
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql-headless
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        image: mysql:latest
+        name: mysql
+        ports:
+        - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-headless
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins
+spec:
+  containers:
+  - image: jenkins/jenkins:latest
+    name: jenkins
+    ports:
+    - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-service
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    name: jenkins

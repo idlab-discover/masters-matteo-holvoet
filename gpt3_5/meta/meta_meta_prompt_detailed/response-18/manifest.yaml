@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-auth-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: user-auth
+  template:
+    metadata:
+      labels:
+        app: user-auth
+    spec:
+      containers:
+      - image: user-auth-image:latest
+        name: user-auth-container
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-auth-service
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: user-auth
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-processing-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: data-processing
+  template:
+    metadata:
+      labels:
+        app: data-processing
+    spec:
+      containers:
+      - image: data-processing-image:latest
+        name: data-processing-container
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-processing-service
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: data-processing
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-rendering-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: image-rendering
+  template:
+    metadata:
+      labels:
+        app: image-rendering
+    spec:
+      containers:
+      - image: image-rendering-image:latest
+        name: image-rendering-container
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: image-rendering-service
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: image-rendering
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+spec:
+  rules:
+  - host: myapp.domain.com
+    http:
+      paths:
+      - backend:
+          service:
+            name: user-auth-service
+            port:
+              number: 80
+        path: /auth
+        pathType: Prefix
+      - backend:
+          service:
+            name: data-processing-service
+            port:
+              number: 80
+        path: /process
+        pathType: Prefix
+      - backend:
+          service:
+            name: image-rendering-service
+            port:
+              number: 80
+        path: /render
+        pathType: Prefix
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: myapp.example.com
+spec:
+  group: example.com
+  names:
+    kind: MyApp
+    plural: myapps
+    shortNames:
+    - ma
+    singular: myapp
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true

@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-deployment
+---
+apiVersion: v1
+data:
+  password: cGFzc3dvcmQ=
+kind: Secret
+metadata:
+  name: mysql-pass
+  namespace: wordpress-deployment
+type: Opaque
+---
+apiVersion: v1
+data:
+  WORDPRESS_DB_HOST: mysql
+  WORDPRESS_DB_PASSWORD: placeholder
+  WORDPRESS_DB_USER: wordpress
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-deployment
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: wordpress-deployment
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-pass
+        image: mysql:5.7
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
+        name: mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pv-claim
+  namespace: wordpress-deployment
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - wordpress
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: WORDPRESS_DB_HOST
+              name: wordpress-config
+        - name: WORDPRESS_DB_USER
+          value: wordpress
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: WORDPRESS_DB_PASSWORD
+              name: wordpress-config
+        image: wordpress:latest
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
+        name: wordpress
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-storage
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-deployment
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-deployment
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: mysql

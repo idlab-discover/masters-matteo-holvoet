@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-mysql
+  namespace: wordpress-mysql
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password123
+        image: mysql:latest
+        name: datastore
+        resources:
+          limits:
+            cpu: 1
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: wordpress-mysql
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-mysql-wordpress
+  namespace: wordpress-mysql
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-service
+        - name: WORDPRESS_DB_PASSWORD
+          value: password123
+        image: wordpress:latest
+        name: webpress
+        resources:
+          limits:
+            cpu: 1
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  namespace: wordpress-mysql
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress

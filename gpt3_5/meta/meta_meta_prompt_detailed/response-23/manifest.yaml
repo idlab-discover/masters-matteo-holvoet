@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-secrets
+        image: wordpress:latest
+        name: wordpress
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      imagePullSecrets:
+      - name: regcred
+---
+apiVersion: networking.k8s.io/v1
+data:
+  password: <base64-encoded-password>
+  root-password: <base64-encoded-root-password>
+kind: NetworkPolicy
+metadata:
+  name: wordpress-allow-db
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - port: 3306
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  - Egress
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-backup-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-backup-operator
+  template:
+    metadata:
+      labels:
+        app: mysql-backup-operator
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: root-password
+              name: mysql-secrets
+        image: mysql-backup-operator:latest
+        name: mysql-backup-operator

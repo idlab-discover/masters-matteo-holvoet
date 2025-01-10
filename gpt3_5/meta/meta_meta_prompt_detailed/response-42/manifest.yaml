@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-namespace
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-namespace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  namespace: wordpress-namespace
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-namespace
+spec:
+  maxReplicas: 10
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 50
+    type: Resource
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress-deployment
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: wordpress-gateway
+  namespace: istio-namespace
+spec:
+  selector:
+    istio: ingressgateway
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: wordpress-virtualservice
+  namespace: istio-namespace
+spec:
+  gateways:
+  - wordpress-gateway
+  hosts:
+  - '*'
+  http:
+  - route:
+    - destination:
+        host: wordpress-service
+        port:
+          number: 80
+---
+apiVersion: helm.cncf.io/v1
+kind: HelmRelease
+metadata:
+  name: wordpress-helmrelease
+  namespace: wordpress-namespace
+spec:
+  chart:
+    name: wordpress
+    repository: https://example.com/charts
+    version: 1.0.0
+  values:
+    replicaCount: 3

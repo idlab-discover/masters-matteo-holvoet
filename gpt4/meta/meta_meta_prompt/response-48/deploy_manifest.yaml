@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-system
+---
+apiVersion: v1
+data:
+  MYSQL_DATABASE: TVlTUUxfREFUQUJBU0U=
+  MYSQL_PASSWORD: TVlTUUxfUEFTU1dPUkQ=
+  MYSQL_ROOT_PASSWORD: TVlTUUxfUk9PVF9QQVNTV09SRA==
+  MYSQL_USER: TVlTUUxfVVNFUg==
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-system
+type: Opaque
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_ROOT_PASSWORD
+              name: mysql-secret
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_DATABASE
+              name: mysql-secret
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_USER
+              name: mysql-secret
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_PASSWORD
+              name: mysql-secret
+        image: mysql:5.7
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
+        name: mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-storage
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  clusterIP: None
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql:3306
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_DATABASE
+              name: mysql-secret
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_USER
+              name: mysql-secret
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MYSQL_PASSWORD
+              name: mysql-secret
+        image: wordpress:latest
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
+        name: wordpress
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress-system
+spec:
+  maxReplicas: 50
+  minReplicas: 5
+  scaleTargetRef:
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: 50

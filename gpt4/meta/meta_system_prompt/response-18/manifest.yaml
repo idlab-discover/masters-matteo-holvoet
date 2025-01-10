@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: mysql
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+    tier: backend
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: wordpress
+  name: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: mysql-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              key: database
+              name: mysql-db-name
+        image: wordpress:latest
+        name: wordpress
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mysql
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: mysql
+        tier: backend
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-root-password
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: mysql-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: database
+              name: mysql-db-name
+        image: mysql:5.7
+        name: mysql
+        ports:
+        - containerPort: 3306
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+data:
+  password:
+  - BASE64_ENCODED_PASSWORD
+kind: Secret
+metadata:
+  name: mysql-root-password
+type: Opaque
+---
+apiVersion: v1
+data:
+  username:
+  - BASE64_ENCODED_USERNAME
+kind: Secret
+metadata:
+  name: mysql-user
+type: Opaque
+---
+apiVersion: v1
+data:
+  password:
+  - BASE64_ENCODED_PASSWORD
+kind: Secret
+metadata:
+  name: mysql-password
+type: Opaque
+---
+apiVersion: v1
+data:
+  database:
+  - BASE64_ENCODED_DATABASE_NAME
+kind: Secret
+metadata:
+  name: mysql-db-name
+type: Opaque

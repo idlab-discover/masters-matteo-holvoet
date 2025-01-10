@@ -1,0 +1,241 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-system
+---
+apiVersion: v1
+data:
+  wp-config.php: '<?php
+
+    define(''DB_NAME'', ''wordpress'');
+
+    define(''DB_USER'', ''wp_user'');
+
+    define(''DB_PASSWORD'', getenv(''DB_PASSWORD''));
+
+    define(''DB_HOST'', ''mysql'');
+
+    define(''DB_CHARSET'', ''utf8'');
+
+    define(''DB_COLLATE'', '''');
+
+    $table_prefix = ''wp_'';
+
+    define(''WP_DEBUG'', false);
+
+    '
+kind: ConfigMap
+metadata:
+  name: wordpress-config
+  namespace: wordpress-system
+---
+apiVersion: v1
+data:
+  mysql-root-password: bXlzcWwtcm9vdC1wYXNzd29yZA==
+  mysql-user-password: bXlzcWwtdXNlci1wYXNzd29yZA==
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-system
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql
+        - name: WORDPRESS_DB_USER
+          value: wp_user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-user-password
+              name: mysql-secret
+        image: wordpress:latest
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
+        name: wordpress
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wordpress-data
+        - mountPath: /var/www/html/wp-config.php
+          name: config-volume
+          subPath: wp-config.php
+      volumes:
+      - name: wordpress-data
+        persistentVolumeClaim:
+          claimName: wp-pvc
+      - configMap:
+          items:
+          - key: wp-config.php
+            path: wp-config.php
+          name: wordpress-config
+        name: config-volume
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-root-password
+              name: mysql-secret
+        - name: MYSQL_USER
+          value: wp_user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-user-password
+              name: mysql-secret
+        - name: MYSQL_DATABASE
+          value: wordpress
+        image: mysql:5.7
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
+        name: mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-data
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress-system
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: wordpress-system
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-policy
+  namespace: wordpress-system
+spec:
+  egress:
+  - ports:
+    - port: 3306
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app: mysql
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - port: 3306
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-system
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi

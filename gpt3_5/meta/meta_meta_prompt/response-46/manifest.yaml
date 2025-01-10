@@ -1,0 +1,161 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  hostPath:
+    path: /data/mysql
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wp-pv
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 5Gi
+  hostPath:
+    path: /data/wp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-cluster
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: mysql-cluster
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-cluster
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql-cluster
+  serviceName: mysql-cluster
+  template:
+    metadata:
+      labels:
+        app: mysql-cluster
+    spec:
+      containers:
+      - image: mysql
+        name: mysql-cluster
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wp-nginx
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wp-nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wp-nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wp-nginx
+  template:
+    metadata:
+      labels:
+        app: wp-nginx
+    spec:
+      containers:
+      - image: wordpress
+        name: wp-nginx
+        volumeMounts:
+        - mountPath: /var/www/html/wp-content
+          name: wp-persistent-storage
+      volumes:
+      - name: wp-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pvc
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mysql-cluster-hpa
+spec:
+  maxReplicas: 10
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 50
+    type: Resource
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: mysql-cluster
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wp-nginx-hpa
+spec:
+  maxReplicas: 10
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 50
+    type: Resource
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wp-nginx
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql-cluster
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wp-nginx-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wp-nginx
+  policyTypes:
+  - Ingress
+  - Egress

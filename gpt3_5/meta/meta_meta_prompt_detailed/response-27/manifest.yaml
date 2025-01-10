@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - image: wordpress:latest
+        name: wordpress
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:latest
+        name: mysql
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-mysql-policy
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mysql
+  podSelector:
+    matchLabels:
+      app: wordpress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+spec:
+  rules:
+  - host: wordpress.example.com
+    http:
+      paths:
+      - backend:
+          service:
+            name: wordpress
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mysql-backup
+spec:
+  group: example.com
+  names:
+    kind: MySQLBackup
+    listKind: MySQLBackupList
+    plural: mysqlbackups
+    singular: mysqlbackup
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+---
+apiVersion: apps/v1
+kind: HelmRelease
+metadata:
+  name: wordpress-mysql-app
+spec:
+  chart:
+    name: wordpress-mysql
+    repository: https://example.com/charts
+    version: 1.0.0

@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wordpress-ns
+---
+apiVersion: v1
+data:
+  MYSQL_DATABASE: wordpressdb
+  MYSQL_USER: wpuser
+kind: ConfigMap
+metadata:
+  name: wp-config
+  namespace: wordpress-ns
+---
+apiVersion: v1
+data:
+  mysql-password: c2VjdXJlcGFzc3dvcmQ=
+  mysql-root-password: dWx0cmFzZWN1cmVwYXNzd29yZA==
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: wordpress-ns
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: wordpress-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-root-password
+              name: mysql-secret
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              key: MYSQL_DATABASE
+              name: wp-config
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              key: MYSQL_USER
+              name: wp-config
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        image: mysql:5.7
+        livenessProbe:
+          initialDelaySeconds: 45
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+        name: mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          tcpSocket:
+            port: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: wordpress-ns
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: wordpress-ns
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+  namespace: wordpress-ns
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-service
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              key: MYSQL_USER
+              name: wp-config
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: mysql-password
+              name: mysql-secret
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: MYSQL_DATABASE
+              name: wp-config
+        image: wordpress:php7.4-fpm-alpine
+        livenessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        name: wordpress
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  namespace: wordpress-ns
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: LoadBalancer
