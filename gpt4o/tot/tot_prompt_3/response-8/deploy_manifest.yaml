@@ -1,86 +1,116 @@
-```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: wordpress
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: wordpress
-  replicas: 1
   template:
     metadata:
       labels:
         app: wordpress
     spec:
       containers:
-      - name: wordpress
-        image: wordpress:latest
-        ports:
-        - containerPort: 80
-        env:
+      - env:
         - name: WORDPRESS_DB_HOST
           value: mysql
         - name: WORDPRESS_DB_USER
           valueFrom:
             secretKeyRef:
-              name: mysql-secret
               key: username
+              name: mysql-secret
         - name: WORDPRESS_DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: mysql-secret
               key: password
+              name: mysql-secret
+        image: wordpress:latest
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
+        name: wordpress
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: wordpress
 spec:
-  type: LoadBalancer
   ports:
   - port: 80
     targetPort: 80
   selector:
     app: wordpress
+  type: LoadBalancer
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mysql
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: mysql
-  replicas: 1
   template:
     metadata:
       labels:
         app: mysql
     spec:
       containers:
-      - name: mysql
-        image: mysql:5.7
-        ports:
-        - containerPort: 3306
-        env:
+      - env:
         - name: MYSQL_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: mysql-secret
               key: rootpassword
+              name: mysql-secret
         - name: MYSQL_DATABASE
           value: wordpress
         - name: MYSQL_USER
           valueFrom:
             secretKeyRef:
-              name: mysql-secret
               key: username
+              name: mysql-secret
         - name: MYSQL_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: mysql-secret
               key: password
+              name: mysql-secret
+        image: mysql:5.7
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
+        name: mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -94,12 +124,11 @@ spec:
     app: mysql
 ---
 apiVersion: v1
+data:
+  password: c2VjdXJlcGFzc3dvcmQ=
+  rootpassword: cm9vdHBhc3N3b3Jk
+  username: d29yZHByZXNz
 kind: Secret
 metadata:
   name: mysql-secret
 type: Opaque
-data:
-  username: d29yZHByZXNz
-  password: c2VjdXJlcGFzc3dvcmQ=
-  rootpassword: cm9vdHBhc3N3b3Jk
-```
