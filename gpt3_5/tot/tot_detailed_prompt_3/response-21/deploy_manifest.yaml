@@ -27,9 +27,23 @@ spec:
               key: password
               name: wordpress-db
         image: wordpress:latest
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
         name: wordpress
         ports:
         - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -53,9 +67,26 @@ spec:
               key: password
               name: mysql-db
         image: mysql:5.7
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
         name: mysql
         ports:
         - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
         volumeMounts:
         - mountPath: /var/lib/mysql/data
           name: mysql-persistent-storage
@@ -90,8 +121,8 @@ spec:
 ---
 apiVersion: v1
 data:
-  password: <base64_encoded_password>
-  username: <base64_encoded_username>
+  password: cGFzc3dvcmQ=
+  username: dXNlcm5hbWU=
 kind: Secret
 metadata:
   name: wordpress-db
@@ -99,7 +130,7 @@ type: Opaque
 ---
 apiVersion: v1
 data:
-  password: <base64_encoded_password>
+  password: cGFzc3dvcmQ=
 kind: Secret
 metadata:
   name: mysql-db

@@ -51,7 +51,21 @@ spec:
               key: password
               name: mysql
         image: wordpress
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 5
         name: wordpress
+        readinessProbe:
+          httpGet:
+            path: /wp-admin/install.php
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,7 +89,24 @@ spec:
               key: rootpassword
               name: mysql
         image: mysql
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          tcpSocket:
+            port: 3306
+          timeoutSeconds: 5
         name: mysql
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
         volumeMounts:
         - mountPath: /var/lib/mysql
           name: mysql-persistent-storage
