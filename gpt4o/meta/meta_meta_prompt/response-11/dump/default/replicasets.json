@@ -1,0 +1,144 @@
+{
+    "kind": "ReplicaSetList",
+    "apiVersion": "apps/v1",
+    "metadata": {
+        "resourceVersion": "1198"
+    },
+    "items": [
+        {
+            "metadata": {
+                "name": "wordpress-c9d87dfd5",
+                "namespace": "default",
+                "uid": "9c24d291-6052-4702-bba4-c68dd2cf08bd",
+                "resourceVersion": "462",
+                "generation": 1,
+                "creationTimestamp": "2025-01-09T21:14:38Z",
+                "labels": {
+                    "app": "wordpress",
+                    "pod-template-hash": "c9d87dfd5"
+                },
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "3",
+                    "deployment.kubernetes.io/max-replicas": "4",
+                    "deployment.kubernetes.io/revision": "1"
+                },
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "kind": "Deployment",
+                        "name": "wordpress",
+                        "uid": "27d45179-7fe2-4c5b-a325-5c2d9ebcb7b5",
+                        "controller": true,
+                        "blockOwnerDeletion": true
+                    }
+                ]
+            },
+            "spec": {
+                "replicas": 3,
+                "selector": {
+                    "matchLabels": {
+                        "app": "wordpress",
+                        "pod-template-hash": "c9d87dfd5"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "creationTimestamp": null,
+                        "labels": {
+                            "app": "wordpress",
+                            "pod-template-hash": "c9d87dfd5"
+                        }
+                    },
+                    "spec": {
+                        "volumes": [
+                            {
+                                "name": "wordpress-persistent-storage",
+                                "persistentVolumeClaim": {
+                                    "claimName": "wordpress-pvc"
+                                }
+                            }
+                        ],
+                        "containers": [
+                            {
+                                "name": "wordpress",
+                                "image": "wordpress:latest",
+                                "ports": [
+                                    {
+                                        "containerPort": 80,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "env": [
+                                    {
+                                        "name": "WORDPRESS_DB_HOST",
+                                        "value": "mysql"
+                                    },
+                                    {
+                                        "name": "WORDPRESS_DB_USER",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "name": "mysql-secret",
+                                                "key": "username"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "WORDPRESS_DB_PASSWORD",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "name": "mysql-secret",
+                                                "key": "password"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "resources": {},
+                                "volumeMounts": [
+                                    {
+                                        "name": "wordpress-persistent-storage",
+                                        "mountPath": "/var/www/html"
+                                    }
+                                ],
+                                "livenessProbe": {
+                                    "tcpSocket": {
+                                        "port": 80
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "readinessProbe": {
+                                    "httpGet": {
+                                        "path": "/wp-admin/install.php",
+                                        "port": 80,
+                                        "scheme": "HTTP"
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 5,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File",
+                                "imagePullPolicy": "Always"
+                            }
+                        ],
+                        "restartPolicy": "Always",
+                        "terminationGracePeriodSeconds": 30,
+                        "dnsPolicy": "ClusterFirst",
+                        "securityContext": {},
+                        "schedulerName": "default-scheduler"
+                    }
+                }
+            },
+            "status": {
+                "replicas": 3,
+                "fullyLabeledReplicas": 3,
+                "observedGeneration": 1
+            }
+        }
+    ]
+}

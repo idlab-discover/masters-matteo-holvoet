@@ -1,0 +1,243 @@
+{
+    "kind": "DeploymentList",
+    "apiVersion": "apps/v1",
+    "metadata": {
+        "resourceVersion": "1185"
+    },
+    "items": [
+        {
+            "metadata": {
+                "name": "mysql",
+                "namespace": "default",
+                "uid": "f8a240ef-819d-4c2f-a2de-ebb44cd28e06",
+                "resourceVersion": "492",
+                "generation": 1,
+                "creationTimestamp": "2025-01-10T04:19:32Z",
+                "annotations": {
+                    "deployment.kubernetes.io/revision": "1"
+                }
+            },
+            "spec": {
+                "replicas": 3,
+                "selector": {
+                    "matchLabels": {
+                        "app": "mysql"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "creationTimestamp": null,
+                        "labels": {
+                            "app": "mysql"
+                        }
+                    },
+                    "spec": {
+                        "volumes": [
+                            {
+                                "name": "mysql-persistent-storage",
+                                "persistentVolumeClaim": {
+                                    "claimName": "mysql-pvc"
+                                }
+                            }
+                        ],
+                        "containers": [
+                            {
+                                "name": "mysql",
+                                "image": "mysql:latest",
+                                "resources": {},
+                                "volumeMounts": [
+                                    {
+                                        "name": "mysql-persistent-storage",
+                                        "mountPath": "/var/lib/mysql"
+                                    }
+                                ],
+                                "livenessProbe": {
+                                    "tcpSocket": {
+                                        "port": 3306
+                                    },
+                                    "initialDelaySeconds": 20,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "readinessProbe": {
+                                    "exec": {
+                                        "command": [
+                                            "mysqladmin",
+                                            "ping",
+                                            "-h",
+                                            "localhost"
+                                        ]
+                                    },
+                                    "initialDelaySeconds": 20,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 5,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File",
+                                "imagePullPolicy": "Always"
+                            }
+                        ],
+                        "restartPolicy": "Always",
+                        "terminationGracePeriodSeconds": 30,
+                        "dnsPolicy": "ClusterFirst",
+                        "securityContext": {},
+                        "schedulerName": "default-scheduler"
+                    }
+                },
+                "strategy": {
+                    "type": "RollingUpdate",
+                    "rollingUpdate": {
+                        "maxUnavailable": "25%",
+                        "maxSurge": "25%"
+                    }
+                },
+                "revisionHistoryLimit": 10,
+                "progressDeadlineSeconds": 600
+            },
+            "status": {
+                "observedGeneration": 1,
+                "replicas": 3,
+                "updatedReplicas": 3,
+                "unavailableReplicas": 3,
+                "conditions": [
+                    {
+                        "type": "Available",
+                        "status": "False",
+                        "lastUpdateTime": "2025-01-10T04:19:33Z",
+                        "lastTransitionTime": "2025-01-10T04:19:33Z",
+                        "reason": "MinimumReplicasUnavailable",
+                        "message": "Deployment does not have minimum availability."
+                    },
+                    {
+                        "type": "Progressing",
+                        "status": "True",
+                        "lastUpdateTime": "2025-01-10T04:19:33Z",
+                        "lastTransitionTime": "2025-01-10T04:19:33Z",
+                        "reason": "ReplicaSetUpdated",
+                        "message": "ReplicaSet \"mysql-6787599ff5\" is progressing."
+                    }
+                ]
+            }
+        },
+        {
+            "metadata": {
+                "name": "wordpress",
+                "namespace": "default",
+                "uid": "5adced42-05cf-4ba9-a571-b8bed55244fb",
+                "resourceVersion": "765",
+                "generation": 1,
+                "creationTimestamp": "2025-01-10T04:19:32Z",
+                "annotations": {
+                    "deployment.kubernetes.io/revision": "1"
+                }
+            },
+            "spec": {
+                "replicas": 3,
+                "selector": {
+                    "matchLabels": {
+                        "app": "wordpress"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "creationTimestamp": null,
+                        "labels": {
+                            "app": "wordpress"
+                        }
+                    },
+                    "spec": {
+                        "volumes": [
+                            {
+                                "name": "wordpress-persistent-storage",
+                                "persistentVolumeClaim": {
+                                    "claimName": "wordpress-pvc"
+                                }
+                            }
+                        ],
+                        "containers": [
+                            {
+                                "name": "wordpress",
+                                "image": "wordpress:latest",
+                                "resources": {},
+                                "volumeMounts": [
+                                    {
+                                        "name": "wordpress-persistent-storage",
+                                        "mountPath": "/var/www/html"
+                                    }
+                                ],
+                                "livenessProbe": {
+                                    "tcpSocket": {
+                                        "port": 80
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "readinessProbe": {
+                                    "httpGet": {
+                                        "path": "/wp-admin/install.php",
+                                        "port": 80,
+                                        "scheme": "HTTP"
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 5,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File",
+                                "imagePullPolicy": "Always"
+                            }
+                        ],
+                        "restartPolicy": "Always",
+                        "terminationGracePeriodSeconds": 30,
+                        "dnsPolicy": "ClusterFirst",
+                        "securityContext": {},
+                        "schedulerName": "default-scheduler"
+                    }
+                },
+                "strategy": {
+                    "type": "RollingUpdate",
+                    "rollingUpdate": {
+                        "maxUnavailable": "25%",
+                        "maxSurge": "25%"
+                    }
+                },
+                "revisionHistoryLimit": 10,
+                "progressDeadlineSeconds": 600
+            },
+            "status": {
+                "observedGeneration": 1,
+                "replicas": 3,
+                "updatedReplicas": 3,
+                "readyReplicas": 3,
+                "availableReplicas": 3,
+                "conditions": [
+                    {
+                        "type": "Available",
+                        "status": "True",
+                        "lastUpdateTime": "2025-01-10T04:20:39Z",
+                        "lastTransitionTime": "2025-01-10T04:20:39Z",
+                        "reason": "MinimumReplicasAvailable",
+                        "message": "Deployment has minimum availability."
+                    },
+                    {
+                        "type": "Progressing",
+                        "status": "True",
+                        "lastUpdateTime": "2025-01-10T04:20:39Z",
+                        "lastTransitionTime": "2025-01-10T04:19:33Z",
+                        "reason": "NewReplicaSetAvailable",
+                        "message": "ReplicaSet \"wordpress-5f68f99cbd\" has successfully progressed."
+                    }
+                ]
+            }
+        }
+    ]
+}

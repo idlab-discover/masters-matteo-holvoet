@@ -1,0 +1,177 @@
+{
+    "kind": "ReplicaSetList",
+    "apiVersion": "apps/v1",
+    "metadata": {
+        "resourceVersion": "1048"
+    },
+    "items": [
+        {
+            "metadata": {
+                "name": "wordpress-7d5664c77",
+                "namespace": "default",
+                "uid": "fc8c9708-3786-4c20-b027-3a377cc564ad",
+                "resourceVersion": "510",
+                "generation": 1,
+                "creationTimestamp": "2025-01-09T20:56:50Z",
+                "labels": {
+                    "app": "wordpress",
+                    "pod-template-hash": "7d5664c77"
+                },
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "3",
+                    "deployment.kubernetes.io/max-replicas": "4",
+                    "deployment.kubernetes.io/revision": "1"
+                },
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "kind": "Deployment",
+                        "name": "wordpress",
+                        "uid": "dd848c2b-5e32-4328-b9f5-565c424c2b64",
+                        "controller": true,
+                        "blockOwnerDeletion": true
+                    }
+                ]
+            },
+            "spec": {
+                "replicas": 3,
+                "selector": {
+                    "matchLabels": {
+                        "app": "wordpress",
+                        "pod-template-hash": "7d5664c77"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "creationTimestamp": null,
+                        "labels": {
+                            "app": "wordpress",
+                            "pod-template-hash": "7d5664c77"
+                        }
+                    },
+                    "spec": {
+                        "volumes": [
+                            {
+                                "name": "wordpress-cache",
+                                "emptyDir": {}
+                            }
+                        ],
+                        "containers": [
+                            {
+                                "name": "wordpress",
+                                "image": "wordpress:latest",
+                                "ports": [
+                                    {
+                                        "containerPort": 80,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "env": [
+                                    {
+                                        "name": "WORDPRESS_DB_HOST",
+                                        "value": "my-wordpress-mysql"
+                                    },
+                                    {
+                                        "name": "WORDPRESS_DB_USER",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "name": "mysql-secret",
+                                                "key": "username"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "WORDPRESS_DB_PASSWORD",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "name": "mysql-secret",
+                                                "key": "password"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "resources": {
+                                    "limits": {
+                                        "cpu": "1",
+                                        "memory": "512Mi"
+                                    },
+                                    "requests": {
+                                        "cpu": "500m",
+                                        "memory": "256Mi"
+                                    }
+                                },
+                                "volumeMounts": [
+                                    {
+                                        "name": "wordpress-cache",
+                                        "mountPath": "/var/www/html/wp-content/cache"
+                                    }
+                                ],
+                                "livenessProbe": {
+                                    "tcpSocket": {
+                                        "port": 80
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "readinessProbe": {
+                                    "httpGet": {
+                                        "path": "/wp-admin/install.php",
+                                        "port": 80,
+                                        "scheme": "HTTP"
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 5,
+                                    "periodSeconds": 5,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File",
+                                "imagePullPolicy": "Always"
+                            }
+                        ],
+                        "restartPolicy": "Always",
+                        "terminationGracePeriodSeconds": 30,
+                        "dnsPolicy": "ClusterFirst",
+                        "nodeSelector": {
+                            "app": "wordpress"
+                        },
+                        "securityContext": {},
+                        "affinity": {
+                            "podAntiAffinity": {
+                                "preferredDuringSchedulingIgnoredDuringExecution": [
+                                    {
+                                        "weight": 1,
+                                        "podAffinityTerm": {
+                                            "labelSelector": {
+                                                "matchExpressions": [
+                                                    {
+                                                        "key": "app",
+                                                        "operator": "In",
+                                                        "values": [
+                                                            "wordpress"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            "topologyKey": "kubernetes.io/hostname"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        "schedulerName": "default-scheduler"
+                    }
+                }
+            },
+            "status": {
+                "replicas": 3,
+                "fullyLabeledReplicas": 3,
+                "observedGeneration": 1
+            }
+        }
+    ]
+}
