@@ -125,3 +125,6 @@ ape_prompt/
   - **`manifest.yaml`**: Extracted manifest from the extraction phase.
   - **`polaris.json`**: Results from the Polaris audit.
   - **`testing.json`**: Summary of the testing procedure.
+
+### Analysis
+The `analysis.ipynb` notebook contains the code used to aggregate and analyze the test results. An overview of the test results is provided in the file: `test_results.pdf`.
