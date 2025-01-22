@@ -19,7 +19,7 @@ The [`prompt_engineering.ipynb`](prompt_engineering.ipynb) notebook contains the
 
 ### Testing Script
 
-The `testing.ipynb` notebook testing.ipynb contains the testing script used to evaluate the generated manifests, along with output logs from all executed tests. 
+The [`testing.ipynb`](testing.ipynb) notebook contains the testing script used to evaluate the generated manifests, along with output logs from all executed tests. 
 
 #### Key Functions:
 
@@ -75,7 +75,7 @@ readiness_probe_mysql = {
 
 - **`polaris_audit`**: Conducts a Polaris audit on the generated manifest, scoring it based on Kubernetes best practices in three areas: Security, Efficiency, and Reliability.
 
-- **`create_cluster` and `delete_cluster`**: Functions to create and delete a fresh kind cluster using the configuration file `kind-cluster-config-mirror.yaml`. The cluster is set up with a Docker Hub mirror registry (`mirror_registry.yaml`) to avoid Docker Hub's pull rate limits. Contexts are utilized to run multiple kind clusters simultaneously.
+- **`create_cluster` and `delete_cluster`**: Functions to create and delete a fresh kind cluster using the configuration file [`kind-cluster-config-mirror.yaml`](kind-cluster-config-mirror.yaml). The cluster is set up with a Docker Hub mirror registry ([`mirror_registry.yaml`](mirror_registry.yaml)) to avoid Docker Hub's pull rate limits. Contexts are utilized to run multiple kind clusters simultaneously.
 
 - **`deploy_manifest`**: Applies the generated manifest to the kind cluster using the `create_from_yaml` function from the Kubernetes Python client library's utils module.
 
@@ -127,4 +127,4 @@ ape_prompt/
   - **`testing.json`**: Summary of the testing procedure.
 
 ### Analysis
-The `analysis.ipynb` notebook contains the code used to aggregate and analyze the test results. An overview of the test results is provided in the file: `test_results.pdf`.
+The [`analysis.ipynb`](analysis.ipynb) notebook contains the code used to aggregate and analyze the test results. An overview of the test results is provided in the file: [`appendix_c.pdf`](appendix_c.pdf).
