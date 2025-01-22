@@ -128,3 +128,18 @@ ape_prompt/
 
 ### Analysis
 The [`analysis.ipynb`](analysis.ipynb) notebook contains the code used to aggregate and analyze the test results. An overview of the test results is provided in the file: [`appendix_c.pdf`](appendix_c.pdf).
+
+## Citations
+If you use this repository in your research, please cite it as follows:
+
+```bibtex
+@misc{llm-kubernetes-iac-generation,
+	title        = {Leveraging AI for Kubernetes System Administration.},
+	author       = {Matteo Holvoet},
+	institution  = {Ghent University},
+	year         = 2025,
+	month        = jan,
+	journal      = {GitHub repository},
+	howpublished = {\url{https://github.com/idlab-discover/masters-matteo-holvoet}}
+}
+```
