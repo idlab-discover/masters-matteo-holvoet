@@ -19,7 +19,7 @@ The [`prompt_engineering.ipynb`](prompt_engineering.ipynb) notebook contains the
 
 ### Testing Script
 
-The `testing.ipynb` notebook contains the testing script used to evaluate the generated manifests, along with output logs from all executed tests. 
+The `testing.ipynb` notebook testing.ipynb contains the testing script used to evaluate the generated manifests, along with output logs from all executed tests. 
 
 #### Key Functions:
 
