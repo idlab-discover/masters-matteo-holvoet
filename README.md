@@ -6,7 +6,7 @@ This repository is part of my master's dissertation titled **"Leveraging AI for 
 
 ### Prompt Engineering
 
-The `prompt_engineering.ipynb` notebook contains the code used to request various LLMs to generate Kubernetes Infrastructure as Code (IaC) manifests for deploying WordPress with a MySQL backend. The following prompt engineering techniques were tested, each with both basic and detailed baseline prompts:
+The [`prompt_engineering.ipynb`](prompt_engineering.ipynb) notebook contains the code used to request various LLMs to generate Kubernetes Infrastructure as Code (IaC) manifests for deploying WordPress with a MySQL backend. The following prompt engineering techniques were tested, each with both basic and detailed baseline prompts:
 
 - **Zero-shot**
 - **Zero-shot role-based**
